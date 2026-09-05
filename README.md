@@ -58,6 +58,27 @@ docker compose up -d --build
 
 ไฟล์ JSON สร้างจาก `grafana/build_dashboard.py` หากแก้ query ให้แก้ที่สคริปต์แล้วรัน `python grafana/build_dashboard.py` (มี test ตรวจว่า JSON ตรงกับสคริปต์)
 
+## Home Assistant dashboard
+
+output `homeassistant` ประกาศ entity ผ่าน MQTT discovery ด้วยชื่อคงที่ `sensor.<device>_pv_w`, `sensor.<device>_soc`,
+`binary_sensor.<device>_alarm`, `sensor.<device>_alarms` (attribute `alarms` มี code/message/advice) และ `sensor.<device>_status`
+(`<device>` คือ id ใน config แปลงเป็น slug เช่น `huawei-sun2000` → `huawei_sun2000`)
+
+สร้าง Lovelace dashboard จาก config ได้ทันที (ใช้ card มาตรฐานของ HA ไม่ต้องติดตั้ง HACS):
+
+```bash
+python homeassistant/build_dashboard.py --config config.yaml
+```
+
+ได้ไฟล์ `homeassistant/solar-relay-dashboard.yaml` (ตัวอย่างจาก config.example.yaml commit ไว้แล้ว) นำเข้าโดย
+Settings → Dashboards → Add dashboard → เปิด → ดินสอ → ⋮ → Raw configuration editor → วาง YAML
+หรือใส่ `lovelace: dashboards:` แบบ `mode: yaml` ใน configuration.yaml ตามคอมเมนต์หัวสคริปต์
+
+- **Overview** การ์ดต่ออุปกรณ์ (สถานะ, PV/Load/Grid/Battery, gauge SOC, พลังงานวันนี้) และกล่อง alarm พร้อมคำแนะนำแก้ไขที่โผล่เฉพาะเมื่อมี alarm
+- **Alarms** รวม alarm ทุกเครื่อง + คำแนะนำจาก alarm_catalog
+- **หน้าต่ออุปกรณ์** history-graph power flow 24 ชม., SOC, กราฟแท่งพลังงานรายวัน 14 วัน, รายละเอียด string/แรงดัน/อุณหภูมิ
+- Energy dashboard ของ HA: เพิ่ม `sensor.<device>_energy_total_kwh` เป็น Solar production, `grid_import/export_day_kwh` เป็น Grid, `batt_charge/discharge_day_kwh` เป็น Battery
+
 ## ตาราง alarm รวมทุกยี่ห้อ + คำแนะนำแก้ไข
 
 `solar_relay/alarm_catalog.yaml` รวมรหัส error ของ Huawei (alarm ID), Solis (รหัสหน้าจอ เช่น OV-G-V, ISO-PRO), Sungrow (002-323),

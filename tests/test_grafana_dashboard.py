@@ -1,13 +1,21 @@
 """The provisioned dashboard must stay in sync with the generator and only query fields the relay writes."""
+import importlib.util
 import json
 import pathlib
 import re
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "grafana"))
 
-import build_dashboard  # noqa: E402
+
+def _load(name: str, path: pathlib.Path):
+    # grafana/ and homeassistant/ both have a build_dashboard.py -> load under distinct module names
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+build_dashboard = _load("grafana_build_dashboard", ROOT / "grafana" / "build_dashboard.py")
 
 from solar_relay.schema import NUMERIC_FIELDS  # noqa: E402
 
