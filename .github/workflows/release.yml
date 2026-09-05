@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish a Release for, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: GitHub Release ${{ github.event.inputs.tag || github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version sanity (tag == pyproject version)
+        id: ver
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VER="${TAG#v}"
+          PYVER=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"; echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if [ "$VER" != "$PYVER" ]; then echo "::warning::tag $TAG != pyproject version $PYVER"; fi
+
+      - name: Build wheel + sdist
+        run: |
+          pip install --upgrade pip build
+          python -m build
+          ls -l dist
+
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          python - "$TAG" > release-notes.md <<'PY'
+          import re, sys, pathlib
+          tag = sys.argv[1]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          m = re.search(rf"^## {re.escape(tag)}[^\n]*\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+          body = m.group(1).strip() if m else f"_No CHANGELOG section for {tag}._"
+          repo = "peeraponggis/solar-relay"
+          ver = tag.lstrip("v")
+          body += f"""
+
+          ## Docker image
+          ```bash
+          docker pull ghcr.io/{repo}:{ver}
+          ```
+          Multi-arch (linux/amd64, linux/arm64). Tags: `{ver}`, `{'.'.join(ver.split('.')[:2])}`, `latest`.
+
+          ## Install from source
+          ```bash
+          pip install "solar-relay @ git+https://github.com/{repo}@{tag}#egg=solar-relay[all]"
+          ```
+          """
+          print("\n".join(line.strip() if line.startswith("          ") else line for line in body.splitlines()))
+          PY
+          cat release-notes.md
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: solar-relay ${{ steps.ver.outputs.tag }}
+          body_path: release-notes.md
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.ver.outputs.tag, '-') }}

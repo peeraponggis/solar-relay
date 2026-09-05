@@ -61,7 +61,8 @@ docker run -d --name solar-relay -v $PWD/config:/config:ro --env-file .env ghcr.
 
 - `.github/workflows/ci.yml` รัน ruff + pytest บน Python 3.11-3.13 ตรวจว่า dashboard/docs ที่ generate ตรงกับสคริปต์ และ smoke test CLI ทุก push/PR
 - `.github/workflows/docker.yml` build image multi-arch ด้วย buildx แล้ว push ไป GHCR เมื่อ push main หรือ tag `v*` (PR แค่ build ไม่ push) พร้อม smoke test `--list-adapters`
-- ออก release: `git tag v0.1.0 && git push --tags`
+- `.github/workflows/release.yml` เมื่อ push tag `v*` จะสร้าง GitHub Release อัตโนมัติ ใส่ release notes จากหัวข้อของเวอร์ชันนั้นใน CHANGELOG.md บวกคำสั่ง docker pull และแนบ wheel/sdist สำหรับ tag ที่มีอยู่แล้วให้รันด้วยมือที่ Actions → Release → Run workflow ใส่ชื่อ tag
+- ออก release: เพิ่มหัวข้อ `## vX.Y.Z` ใน CHANGELOG.md, ปรับ version ใน pyproject.toml และ solar_relay/__init__.py แล้ว `git tag vX.Y.Z && git push --tags`
 
 ## Grafana dashboard
 
