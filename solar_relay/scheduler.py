@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from .adapters.base import BaseAdapter, PushAdapter
+from .alarm_catalog import enrich_reading
 from .config import RelayConfig
 from .outputs.base import BaseOutput
 from .registry import get_adapter_class, get_output_class
@@ -78,6 +79,7 @@ class Relay:
                 readings = await adapter.read()
                 for r in readings:
                     r.derive_missing()
+                    enrich_reading(r)
                     await self.queue.put(r)
                 backoff = adapter.interval_s
                 adapter.consecutive_errors = 0
@@ -94,6 +96,7 @@ class Relay:
     async def _push_loop(self, adapter: PushAdapter) -> None:
         async for reading in adapter.stream():
             reading.derive_missing()
+            enrich_reading(reading)
             await self.queue.put(reading)
             if self._stop.is_set():
                 break

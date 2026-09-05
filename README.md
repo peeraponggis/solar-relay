@@ -58,6 +58,19 @@ docker compose up -d --build
 
 ไฟล์ JSON สร้างจาก `grafana/build_dashboard.py` หากแก้ query ให้แก้ที่สคริปต์แล้วรัน `python grafana/build_dashboard.py` (มี test ตรวจว่า JSON ตรงกับสคริปต์)
 
+## ตาราง alarm รวมทุกยี่ห้อ + คำแนะนำแก้ไข
+
+`solar_relay/alarm_catalog.yaml` รวมรหัส error ของ Huawei (alarm ID), Solis (รหัสหน้าจอ เช่น OV-G-V, ISO-PRO), Sungrow (002-323),
+Deye (F01-F64), Sofar (ID01-ID84), SolaX (IE01-IE32), GoodWe (ชื่อ error), SunSpec Evt1 (SolarEdge/Fronius/SMA/Delta), SolarEdge (18xNN),
+Fronius (state code), SMA (event number), Growatt และ Sigen โดยแต่ละรหัสผูกกับ **category** (เช่น insulation, leakage, arc, grid_overvoltage)
+ที่มีสาเหตุและขั้นตอนแก้ไขภาษาไทยสำหรับทีมบริการ
+
+- relay เติม `message`, `advice`, `category` และปรับ `severity` ให้ทุก alarm อัตโนมัติก่อนส่งออก (InfluxDB measurement `alarm` มี tag `category` และ field `advice`)
+- ดูตารางทั้งหมดที่ [docs/ALARM_CODES.md](docs/ALARM_CODES.md) (สร้างด้วย `python -m solar_relay.alarm_catalog --markdown > docs/ALARM_CODES.md`)
+- ค้นรหัสจาก CLI: `python -m solar_relay.alarm_catalog --lookup huawei.2062 deye.F16 --message "OV-G-V02"`
+- เพิ่มรหัสใหม่: ใส่ใต้ `brands.<ยี่ห้อ>` ระบุ `name`, `category` (หรือ `action` เอง) และ `aliases` สำหรับข้อความที่ cloud ส่งมา
+- รายการ Sigen ยังเป็น placeholder เพราะหน้า Error Code List ของ portal ต้องใช้บัญชี vendor เปิด ให้เติมเมื่อได้รหัสจริง
+
 ## Schema กลาง (`solar_relay/schema.py`)
 
 เครื่องหมายทุกยี่ห้อถูกแปลงให้เหมือนกัน:

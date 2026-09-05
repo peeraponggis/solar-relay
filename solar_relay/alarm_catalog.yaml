@@ -1,0 +1,567 @@
+# Unified alarm / error-code catalog.  See alarm_catalog.py for the lookup rules.
+# action = คำแนะนำสำหรับทีมบริการ (ไทย), name/cause = English so the vendor manual is easy to cross-reference.
+# Sources: Huawei SUN2000 Modbus Interface Definitions + FusionSolar alarm reference; Solis / Ginlong user manuals (fault list);
+# Sungrow SG/SH user manuals; Deye SUN-xK-SG0xLP1/3 manual (F-codes); Sofar HYD manual (ID codes); SolaX X1/X3 hybrid manual (IE codes);
+# GoodWe ET/EH manual (error list, same names as the goodwe PyPI lib); Fronius Symo/Primo state codes; SMA event numbers;
+# SolarEdge SetApp error codes; SunSpec model 101-103 Evt1 bits; Sigenergy OpenAPI Alarm push (alarmCode) - fill the Sigen list
+# from the portal "Error Code List" page once your vendor account can open it.
+
+_default:
+  name: Unknown alarm
+  severity: warning
+  action: ยังไม่มีในตาราง ให้จดรหัสจากหน้าจอ/แอปของผู้ผลิต ตรวจว่า alarm ยัง active หรือไม่ แล้วเพิ่มรหัสลง alarm_catalog.yaml
+
+categories:
+  grid_loss:
+    name: Grid loss / no AC
+    severity: warning
+    cause: ไฟกริดดับ, เบรกเกอร์ AC ตัด, สายเฟส/นิวทรัลหลวม, ฟิวส์ AC ขาด
+    action: ตรวจว่ากริดมีไฟหรือไม่ วัดแรงดันที่ขั้ว AC ของ inverter ตรวจเบรกเกอร์ AC และจุดต่อสาย ถ้ากริดมีไฟแต่ยังฟ้อง ให้ตรวจสาย N ขาดหรือ RCD ตัด
+  grid_overvoltage:
+    name: Grid overvoltage
+    severity: warning
+    cause: แรงดันกริดสูงเกิน setting ประเทศ (มักเกิดช่วงเที่ยงที่ระบบใกล้เคียง export มาก) หรือสาย AC ยาว/เล็กทำให้แรงดันปลายสายยกขึ้น
+    action: วัดแรงดันกริดที่ขั้ว inverter เทียบ setting (ไทย 220/380 V ±10%) ถ้าเกิดเฉพาะช่วงผลิตสูง ให้ลดค่า impedance ของสาย AC (เพิ่มขนาดสาย/ลดระยะ) หรือเปิดฟังก์ชัน Volt-Watt/Q(U) ตามข้อกำหนดการไฟฟ้า อย่าปรับ protection limit เกินที่การไฟฟ้าอนุญาต
+  grid_undervoltage:
+    name: Grid undervoltage
+    severity: warning
+    cause: แรงดันกริดต่ำ, สาย AC หลวม, โหลดหนักในซอย, เฟสหาย
+    action: วัดแรงดันกริดทุกเฟส ตรวจจุดต่อสายและเบรกเกอร์ ถ้าแรงดันจากการไฟฟ้าต่ำจริงให้แจ้งการไฟฟ้า
+  grid_frequency:
+    name: Grid frequency out of range
+    severity: warning
+    cause: ความถี่กริดเกิน/ต่ำกว่าช่วงที่ตั้ง (ไทย 50 Hz ±1) หรือเป็นระบบ off-grid/เจนเนอเรเตอร์ที่ความถี่แกว่ง
+    action: ถ้าเกิดชั่วคราวและกลับมาเองไม่ต้องทำอะไร ถ้าเกิดซ้ำให้ตรวจ grid code ที่ตั้งใน inverter และตรวจว่าจ่ายไฟจากเจนเนอเรเตอร์หรือไม่
+  grid_impedance:
+    name: Grid impedance too high
+    severity: warning
+    cause: สาย AC ยาว/เล็ก จุดต่อหลวม หม้อแปลงขนาดเล็ก
+    action: ตรวจจุดต่อ AC ทุกจุด เพิ่มขนาดสายหรือลดระยะ ปรับค่า impedance protection ได้เฉพาะเมื่อการไฟฟ้าอนุญาต
+  islanding:
+    name: Islanding detected
+    severity: warning
+    cause: inverter ตรวจพบว่ากริดหาย (anti-islanding) มักเกิดพร้อมกริดดับหรือกริดอ่อนมาก
+    action: ปกติจะต่อกริดใหม่เองเมื่อกริดปกติ ถ้าเกิดบ่อยทั้งที่กริดปกติ ให้ตรวจสาย AC และ grid code ที่ตั้ง
+  dc_overvoltage:
+    name: PV / DC overvoltage
+    severity: fault
+    cause: จำนวนแผงต่ออนุกรมมากเกินไป (Voc รวมสูงกว่า Vmax ของ inverter) โดยเฉพาะตอนเช้าอากาศเย็น
+    action: วัด Voc ของ string ตอนเช้า เทียบกับ Max DC voltage ของ inverter ถ้าเกินให้ลดจำนวนแผงต่อ string ห้ามเปิดเครื่องซ้ำจนกว่าจะแก้
+  dc_reverse:
+    name: PV string reverse polarity
+    severity: fault
+    cause: ต่อขั้ว +/- ของ string สลับ
+    action: ปิด DC switch วัดขั้วทุก string ด้วยมิเตอร์ แล้วสลับสายให้ถูก
+  string_abnormal:
+    name: String current / power abnormal
+    severity: warning
+    cause: string ใดผลิตต่ำผิดปกติ (เงาบัง แผงเสีย ฟิวส์ขาด คอนเนกเตอร์ MC4 ร้อน/หลวม)
+    action: เทียบกระแสแต่ละ string ในแอป/dashboard (PV strings panel) string ที่ต่ำกว่าเพื่อนเกิน 20% ให้ตรวจเงาบัง คอนเนกเตอร์ MC4 ฟิวส์ และแผงด้วยกล้องความร้อน
+  string_backfeed:
+    name: String current backfeed
+    severity: warning
+    cause: string มี Voc ไม่เท่ากัน (จำนวนแผงต่างกัน หรือมีแผงเสีย) ทำให้กระแสไหลย้อน
+    action: ตรวจว่าทุก string ที่ขนานกันมีจำนวนแผงและรุ่นเท่ากัน วัด Voc แต่ละ string
+  insulation:
+    name: Low insulation resistance (ISO / PV ground fault)
+    severity: fault
+    cause: ฉนวนสาย DC รั่วลงดิน (สายถลอก, น้ำเข้ากล่องต่อสาย/MC4, ความชื้นตอนเช้า, แผงแตก)
+    action: ปิดเครื่อง วัดค่าฉนวน (Riso) ของแต่ละ string เทียบดิน ด้วย insulation tester 1000 V ต้อง > 1 MΩ ถ้าเกิดเฉพาะตอนเช้าชื้นแล้วหาย ให้ตรวจกล่อง junction/MC4 ที่มีน้ำเข้า ค่าที่ต่ำถาวรให้ไล่หาสายที่ถลอกหรือแผงรั่ว
+  leakage:
+    name: Residual / leakage current too high (RCMU, GFCI)
+    severity: fault
+    cause: กระแสรั่วลงดินฝั่ง DC หรือ AC เกิน 30-300 mA, capacitance ต่อดินของแผงสูง (แผงเปียก), RCD ที่ติดตั้งไม่ใช่ type A/B
+    action: ตรวจฉนวนสาย DC และการต่อดินของโครงแผง ถ้าเกิดตอนฝนตกแล้วหายเป็นเรื่อง capacitance ปกติของ array ใหญ่ ถ้าเกิดถาวรให้ตรวจ AC wiring และ RCD ห้าม bypass sensor
+  arc:
+    name: DC arc fault (AFCI)
+    severity: fault
+    cause: จุดต่อ DC หลวม/ไหม้ (MC4, ขั้วต่อใน inverter, ฟิวส์) ทำให้เกิดประกายไฟ เสี่ยงไฟไหม้
+    action: ห้าม reset ซ้ำโดยไม่ตรวจ ปิด DC switch แล้วตรวจ MC4 ทุกจุด สายที่ร้อน/ดำ ขั้วต่อใน inverter และกล่อง combiner ถ้าเป็น false alarm ซ้ำให้ทดสอบ AFCI self-test และอัปเดต firmware
+  overtemp:
+    name: Over temperature
+    severity: warning
+    cause: ระบายความร้อนไม่พอ (ติดตั้งโดนแดด, ระยะห่างไม่พอ, ฝุ่นอุดครีบ, พัดลมเสีย) หรืออุณหภูมิแวดล้อมสูง
+    action: ตรวจว่า inverter ไม่โดนแดดตรง มีระยะห่างตามคู่มือ ทำความสะอาดครีบระบายความร้อนและพัดลม ถ้า derating ตอนบ่ายเป็นประจำให้เพิ่มการระบายอากาศหรือย้ายตำแหน่ง
+  fan:
+    name: Fan failure
+    severity: warning
+    cause: พัดลมภายใน/ภายนอกเสียหรือติดฝุ่น
+    action: ปิดเครื่อง ทำความสะอาดพัดลม ถ้าไม่หมุนให้เปลี่ยนพัดลม (อะไหล่จากผู้ผลิต)
+  relay:
+    name: Relay / output relay check failure
+    severity: fault
+    cause: รีเลย์ต่อกริดภายในเสีย หรือมีไฟย้อนที่ขั้ว AC ตอนตรวจ
+    action: ปิดเปิดเครื่องใหม่ 1 ครั้ง ถ้ายังฟ้องเป็นความเสียหายภายใน ติดต่อผู้ผลิตเคลม
+  dc_injection:
+    name: DC component in AC output too high
+    severity: fault
+    cause: วงจรภายในผิดปกติ หรือมี DC offset จากโหลด/กริด
+    action: ปิดเปิดเครื่องใหม่ ถ้าเกิดซ้ำติดต่อผู้ผลิต
+  bus:
+    name: DC bus voltage abnormal
+    severity: fault
+    cause: บัสภายในแรงดันสูง/ต่ำผิดปกติ มักตามหลัง DC overvoltage หรือแผงแรงดันแกว่ง
+    action: ตรวจ Voc ของ string และการต่อสาย DC ปิดเปิดใหม่ ถ้าเกิดซ้ำติดต่อผู้ผลิต
+  overcurrent:
+    name: Output / input overcurrent
+    severity: fault
+    cause: กระแส AC หรือ DC เกินพิกัด (โหลด backup เกิน, string ขนานมากไป, กริดผิดปกติชั่วขณะ)
+    action: ตรวจว่า string ขนานไม่เกิน Isc ที่ inverter รับได้ ลดโหลดฝั่ง backup ถ้าเกิดซ้ำติดต่อผู้ผลิต
+  overload:
+    name: Backup / EPS overload
+    severity: warning
+    cause: โหลดในวงจร backup เกินพิกัดของ inverter ตอนไฟดับ หรือโหลดมอเตอร์กระชากตอนสตาร์ท
+    action: ลดโหลดในวงจร backup ให้ต่ำกว่าพิกัด ย้ายมอเตอร์/แอร์ใหญ่ออกจากวงจร backup
+  battery:
+    name: Battery abnormal
+    severity: fault
+    cause: BMS รายงานผิดปกติ (แรงดันเซลล์สูง/ต่ำ, อุณหภูมิ, กระแสเกิน) หรือแบตเตอรี่ต่อสลับขั้ว
+    action: ดูรหัสของ BMS ในแอป ตรวจเบรกเกอร์แบตเตอรี่และขั้วต่อ ถ้า SOC ต่ำมากให้ปล่อยชาร์จจากกริด ถ้าเป็นแรงดันเซลล์ผิดปกติให้ติดต่อผู้ผลิตแบตเตอรี่
+  battery_comm:
+    name: Battery / BMS communication lost
+    severity: fault
+    cause: สาย CAN/RS485 ระหว่าง inverter กับแบตเตอรี่หลุด สลับ pin ตั้ง protocol ผิดรุ่น หรือ terminator ไม่ครบ
+    action: ตรวจสาย comm ขั้วต่อ pinout ตามคู่มือแบตเตอรี่รุ่นนั้น ตั้งค่า battery brand/protocol ใน inverter ให้ตรง เปิดแบตก่อนเปิด inverter
+  battery_reverse:
+    name: Battery reverse connection
+    severity: fault
+    cause: ต่อขั้วแบตเตอรี่สลับ
+    action: ปิดทุกอย่าง ตรวจขั้ว +/- ก่อนต่อใหม่ ตรวจว่าฟิวส์/เบรกเกอร์แบตยังดี
+  meter_comm:
+    name: Meter / CT communication abnormal
+    severity: warning
+    cause: สาย RS485 ไปมิเตอร์หลุด, address/baud ผิด, CT ต่อสลับทิศหรือหลุด
+    action: ตรวจสาย A/B ของ RS485 ที่มิเตอร์ ตั้ง address และ baud ตามคู่มือ ตรวจทิศ CT (ลูกศรชี้ไปทางกริด) ถ้ามิเตอร์หายจะทำให้ zero-export ไม่ทำงาน
+  comm:
+    name: Communication / monitoring unit fault
+    severity: info
+    cause: datalogger/dongle หลุดจากอินเทอร์เน็ต หรือสายภายในหลวม
+    action: ตรวจ Wi-Fi/LAN ของ dongle ถอดเสียบใหม่ ตรวจว่า inverter ยังผลิตปกติ (alarm นี้ไม่กระทบการผลิต)
+  device_fault:
+    name: Internal device / hardware fault
+    severity: fault
+    cause: ความเสียหายภายใน (sensor, DSP, power stage)
+    action: ปิดเครื่องทั้ง AC/DC รอ 5 นาที เปิดใหม่ 1 ครั้ง ถ้ายังฟ้องให้จดรหัสและ serial แล้วเปิดเคลมกับผู้ผลิต อย่าซ่อมเอง
+  firmware:
+    name: Firmware / upgrade / license problem
+    severity: info
+    cause: อัปเดตไม่สำเร็จ เวอร์ชันไม่ตรงกัน หรือ license หมดอายุ
+    action: อัปเดต firmware ใหม่ผ่านแอปผู้ติดตั้ง หรือติดต่อผู้ผลิตเรื่อง license
+  config:
+    name: Configuration abnormal
+    severity: warning
+    cause: ตั้งค่าไม่ตรงกับการติดตั้งจริง (grid code, PV string config, CT, meter, battery type)
+    action: ตรวจการตั้งค่าใน commissioning app ให้ตรงกับหน้างาน
+  pv_low:
+    name: PV voltage low / no PV
+    severity: info
+    cause: แสงน้อย เช้า-เย็น หรือ string หลุด/DC switch ปิด
+    action: ถ้าเกิดเฉพาะเช้า-เย็นเป็นปกติ ถ้าเกิดกลางวันให้ตรวจ DC switch ฟิวส์ และคอนเนกเตอร์
+  optimizer:
+    name: Optimizer / module-level device fault
+    severity: warning
+    cause: optimizer หรืออุปกรณ์ระดับแผงหลุดสื่อสาร/เสีย
+    action: ดูแผงที่หายจากแผนผังในแอป ตรวจคอนเนกเตอร์และตัว optimizer ตัวนั้น
+
+brands:
+  # =========================================================================== HUAWEI SUN2000 (alarm ID = FusionSolar alarmId)
+  huawei:
+    "2001": {name: High string input voltage, category: dc_overvoltage}
+    "2002": {name: DC arc fault, category: arc}
+    "2003": {name: DC arc fault (manual clear required), category: arc, action: เหมือน 2002 และต้อง clear alarm ด้วยแอป/ปุ่มบนเครื่องหลังตรวจสายเสร็จ}
+    "2011": {name: String reverse connection, category: dc_reverse}
+    "2012": {name: String current backfeed, category: string_backfeed}
+    "2013": {name: Abnormal string power, category: string_abnormal}
+    "2014": {name: High input string voltage to ground, category: insulation}
+    "2015": {name: PV string loss, category: pv_low, action: string นั้นไม่มีกระแสกลางวัน ตรวจ MC4 ฟิวส์ และแผง}
+    "2021": {name: AFCI self-check fail, category: arc, action: รัน AFCI self-check ใหม่จากแอป ถ้าล้มเหลวซ้ำเป็นบอร์ด AFCI เสีย เคลม}
+    "2031": {name: Phase wire short-circuited to PE, category: grid_loss, action: สายเฟสช็อตลงดินหรือต่อ N/PE ผิด ตรวจ AC wiring ทั้งหมดก่อนเปิดใหม่, severity: fault}
+    "2032": {name: Grid loss, category: grid_loss}
+    "2033": {name: Grid undervoltage, category: grid_undervoltage}
+    "2034": {name: Grid overvoltage, category: grid_overvoltage}
+    "2035": {name: Grid voltage imbalance, category: grid_undervoltage, action: วัดแรงดัน 3 เฟส ต่างกันเกิน 3-5% แสดงว่าโหลดไม่สมดุลหรือสายเฟสหลวม}
+    "2036": {name: Grid overfrequency, category: grid_frequency}
+    "2037": {name: Grid underfrequency, category: grid_frequency}
+    "2038": {name: Unstable grid frequency, category: grid_frequency}
+    "2039": {name: Output overcurrent, category: overcurrent}
+    "2040": {name: Output DC component overhigh, category: dc_injection}
+    "2051": {name: Abnormal residual current, category: leakage}
+    "2061": {name: Abnormal grounding, category: insulation, action: ตรวจว่าสาย PE ต่อครบและมีความต่อเนื่อง สาย N/PE ไม่สลับ}
+    "2062": {name: Low insulation resistance, category: insulation}
+    "2063": {name: Overtemperature, category: overtemp}
+    "2064": {name: Device fault, category: device_fault}
+    "2065": {name: Upgrade failed or version mismatch, category: firmware}
+    "2066": {name: License expired, category: firmware}
+    "2067": {name: Faulty power collector, category: meter_comm}
+    "2068": {name: Battery abnormal, category: battery}
+    "2069": {name: Battery reverse connection, category: battery_reverse}
+    "2070": {name: Active islanding, category: islanding}
+    "2071": {name: Passive islanding, category: islanding}
+    "2072": {name: Transient AC overvoltage, category: grid_overvoltage}
+    "2075": {name: Peripheral port short circuit, category: device_fault, action: ตรวจสายที่ต่อพอร์ต COM/12V/dry contact ว่าช็อตหรือไม่}
+    "2077": {name: Abnormal grounding or AC wiring, category: insulation}
+    "2080": {name: Abnormal PV module configuration, category: config}
+    "2081": {name: Optimizer fault, category: optimizer}
+    "2082": {name: On-grid/off-grid controller abnormal, category: device_fault}
+    "2085": {name: Built-in PID operation abnormal, category: device_fault}
+    "2086": {name: External fan abnormal, category: fan}
+    "2087": {name: Internal fan abnormal, category: fan}
+    "2088": {name: DC protection unit abnormal, category: device_fault}
+    "2089": {name: EL unit abnormal, category: device_fault}
+    "2090": {name: Active adjustment instruction abnormal, category: config}
+    "2091": {name: Reactive adjustment instruction abnormal, category: config}
+    "2092": {name: CT wiring abnormal, category: meter_comm}
+    "61440": {name: Faulty monitoring unit, category: comm}
+    _default: {name: Huawei alarm, action: ดูรายละเอียดใน FusionSolar > Alarms ซึ่งมี alarmCause และ repairSuggestion ของ Huawei}
+
+  # =========================================================================== SOLIS (Ginlong) - fault text codes on display / SolisCloud
+  solis:
+    "NO-GRID": {name: No grid, category: grid_loss, aliases: [No Grid, NoGrid]}
+    "OV-G-V": {name: Grid overvoltage, category: grid_overvoltage, aliases: [OV-G-V01, OV-G-V02, OV-G-V03, OV-G-V04, OV-G-V05]}
+    "UN-G-V": {name: Grid undervoltage, category: grid_undervoltage, aliases: [UN-G-V01, UN-G-V02, UN-G-V03]}
+    "OV-G-F": {name: Grid overfrequency, category: grid_frequency, aliases: [OV-G-F01, OV-G-F02]}
+    "UN-G-F": {name: Grid underfrequency, category: grid_frequency, aliases: [UN-G-F01, UN-G-F02]}
+    "G-IMP": {name: Grid impedance too high, category: grid_impedance}
+    "G-PHASE": {name: Grid phase error / unbalance, category: grid_undervoltage, aliases: [G-PHASE01, PHASE-ERR]}
+    "GRID-INTF": {name: Grid interference, category: grid_frequency, aliases: [GRID-INTF01, GRID-INTF02], action: กริดมีสัญญาณรบกวน/ฮาร์มอนิกสูง ตรวจโหลดใกล้เคียง (เครื่องเชื่อม, VFD) และสาย AC}
+    "OV-G-I": {name: Grid overcurrent, category: overcurrent}
+    "OV-DC": {name: DC overvoltage, category: dc_overvoltage, aliases: [OV-DC01, OV-DC02, OV-DC03, OV-DC04]}
+    "OV-BUS": {name: DC bus overvoltage, category: bus}
+    "UN-BUS": {name: DC bus undervoltage, category: bus, aliases: [UN-BUS01, UN-BUS02]}
+    "OV-TEM": {name: Over temperature, category: overtemp}
+    "PV ISO-PRO": {name: PV insulation protection, category: insulation, aliases: [ISO-PRO, ISO-PRO01, ISO-PRO02, "PV ISO-PRO01", "PV ISO-PRO02"]}
+    "ILeak-PRO": {name: Leakage current protection, category: leakage, aliases: [ILeak-PRO01, ILeak-PRO02, ILeak-PRO03, ILeak-PRO04, ILEAK-PRO]}
+    "RelayCheck-FAIL": {name: Relay check failed, category: relay, aliases: [Relay-FAIL, RELAY-FAIL]}
+    "DCinj-FAULT": {name: DC injection fault, category: dc_injection, aliases: [DCINJ-FAULT]}
+    "AFCI-Check": {name: AFCI self-check failed, category: arc, aliases: [AFCI-CHECK, AFCI-Check FAIL]}
+    "ARC-FAULT": {name: DC arc fault, category: arc, aliases: [ARC FAULT]}
+    "IGBT-OV-I": {name: IGBT overcurrent, category: overcurrent}
+    "DC-INTF": {name: DC current sampling error, category: device_fault}
+    "12Power-FAULT": {name: 12 V auxiliary power fault, category: device_fault}
+    "INI-FAULT": {name: Initialisation / DSP fault, category: device_fault}
+    "OV-Vbatt": {name: Battery overvoltage, category: battery, aliases: [OV-VBATT]}
+    "UN-Vbatt": {name: Battery undervoltage, category: battery, aliases: [UN-VBATT], action: SOC ต่ำมาก ปล่อยให้ชาร์จจากกริดหรือ PV ตรวจ setting over-discharge SOC}
+    "CAN-FAIL": {name: Battery CAN communication failed, category: battery_comm, aliases: [BatName-FAIL, "CAN Fail"]}
+    "Battery-Reverse": {name: Battery reverse polarity, category: battery_reverse, aliases: [BAT-REVERSE]}
+    "OV-ILLC": {name: LLC overcurrent (battery side), category: overcurrent}
+    "OV-VBackup": {name: Backup output overvoltage, category: device_fault, aliases: [OV-VBACKUP]}
+    "Over-Load": {name: Backup overload, category: overload, aliases: [OVER-LOAD, Backup Overload]}
+    "Meter-FAIL": {name: Meter communication failed, category: meter_comm, aliases: [METER-FAIL, "Meter Fail"]}
+    "Failsafe": {name: Fail-safe (meter lost) export stop, category: meter_comm, aliases: [FAILSAFE]}
+    "SCREEN-COMM-FAIL": {name: Display communication fail, category: comm}
+    "DSP-B-FAULT": {name: DSP B fault, category: device_fault}
+    "OV-G-V-DC": {name: Grid voltage DC offset, category: dc_injection}
+    _default: {name: Solis alarm, action: อ่านรหัสจากหน้าจอ inverter หรือ SolisCloud > Alarm ซึ่งมี advice ประกอบ}
+
+  # =========================================================================== SUNGROW SG / SH fault codes (display / iSolarCloud)
+  sungrow:
+    "002": {name: Grid overvoltage, category: grid_overvoltage, aliases: ["2"]}
+    "003": {name: Transient grid overvoltage, category: grid_overvoltage, aliases: ["3"]}
+    "004": {name: Grid undervoltage, category: grid_undervoltage, aliases: ["4"]}
+    "005": {name: Grid low voltage, category: grid_undervoltage, aliases: ["5"]}
+    "007": {name: AC instantaneous overcurrent, category: overcurrent, aliases: ["7"]}
+    "008": {name: Grid overfrequency, category: grid_frequency, aliases: ["8"]}
+    "009": {name: Grid underfrequency, category: grid_frequency, aliases: ["9"]}
+    "010": {name: Grid power outage / islanding, category: grid_loss, aliases: ["10"]}
+    "011": {name: Device abnormal, category: device_fault, aliases: ["11"]}
+    "012": {name: Excessive leakage current, category: leakage, aliases: ["12"]}
+    "013": {name: Grid abnormal, category: grid_loss, aliases: ["13"]}
+    "014": {name: 10-minute grid overvoltage, category: grid_overvoltage, aliases: ["14"]}
+    "015": {name: Grid overvoltage, category: grid_overvoltage, aliases: ["15"]}
+    "016": {name: Output overload, category: overload, aliases: ["16"]}
+    "017": {name: Grid voltage unbalance, category: grid_undervoltage, aliases: ["17"]}
+    "019": {name: Bus overvoltage, category: bus, aliases: ["19"]}
+    "021": {name: PV1 overcurrent, category: overcurrent, aliases: ["21"]}
+    "022": {name: PV2 overcurrent, category: overcurrent, aliases: ["22"]}
+    "028": {name: PV1 reverse connection, category: dc_reverse, aliases: ["28"]}
+    "029": {name: PV2 reverse connection, category: dc_reverse, aliases: ["29"]}
+    "036": {name: Module overtemperature, category: overtemp, aliases: ["36"]}
+    "037": {name: Ambient overtemperature, category: overtemp, aliases: ["37"]}
+    "038": {name: Relay fault, category: relay, aliases: ["38"]}
+    "039": {name: Low insulation resistance, category: insulation, aliases: ["39"]}
+    "040": {name: Fan fault, category: fan, aliases: ["40"]}
+    "041": {name: Leakage current sensor abnormal, category: device_fault, aliases: ["41"]}
+    "043": {name: Low ambient temperature, category: overtemp, aliases: ["43"], severity: info, action: อุณหภูมิต่ำกว่าช่วงทำงาน รอให้อุ่นขึ้น}
+    "044": {name: System fault, category: device_fault, aliases: ["44"]}
+    "047": {name: PV input configuration abnormal, category: config, aliases: ["47"]}
+    "048": {name: PV current sampling error, category: device_fault, aliases: ["48"]}
+    "070": {name: Fan fault, category: fan, aliases: ["70"]}
+    "106": {name: Grounding fault, category: insulation}
+    "116": {name: Bus voltage abnormal, category: bus}
+    "220": {name: PV reverse / DC arc, category: arc}
+    "300": {name: Battery undervoltage, category: battery}
+    "301": {name: Battery overvoltage, category: battery}
+    "305": {name: Battery communication abnormal, category: battery_comm}
+    "310": {name: Backup overload, category: overload}
+    "314": {name: Battery overtemperature, category: battery}
+    "323": {name: Meter communication abnormal, category: meter_comm}
+    "state.5500": {name: Inverter in fault state, category: device_fault, action: ดู fault code ใน iSolarCloud หรือหน้าจอ WiNet เพื่อรหัสจริง}
+    "state.2500": {name: Communication fault, category: comm}
+    "dev_status.2": {name: Device fault (cloud), category: device_fault}
+    _default: {name: Sungrow fault, action: อ่านรหัส 3 หลักจาก iSolarCloud > Fault แล้วเทียบตารางในคู่มือ}
+
+  # =========================================================================== DEYE / SUNSYNK (F-codes, hybrid SUN-xK-SG0xLP1/LP3)
+  deye:
+    "F01": {name: DC input polarity reverse, category: dc_reverse}
+    "F07": {name: DC/DC overcurrent (soft), category: overcurrent}
+    "F08": {name: DC/DC overcurrent (hard), category: overcurrent}
+    "F10": {name: Auxiliary power supply fault, category: device_fault}
+    "F13": {name: Working mode changed / grid mode changed, category: config, severity: info, action: เกิดเมื่อสลับ on-grid/off-grid หรือเปลี่ยน grid standard เป็นข้อมูล ไม่ต้องแก้}
+    "F15": {name: AC overcurrent (software), category: overcurrent}
+    "F16": {name: AC leakage current (GFCI), category: leakage}
+    "F18": {name: AC overcurrent (hardware), category: overcurrent}
+    "F20": {name: DC overcurrent, category: overcurrent}
+    "F22": {name: Emergency stop / remote shutdown, category: config, severity: info, action: ตรวจสวิตช์ E-stop หรือคำสั่ง shutdown จาก remote}
+    "F23": {name: AC leakage current transient, category: leakage}
+    "F24": {name: DC insulation impedance failure, category: insulation}
+    "F26": {name: DC busbar unbalanced, category: bus}
+    "F29": {name: Parallel communication fault, category: comm, action: ตรวจสาย parallel CAN ระหว่างเครื่อง terminator และ master/slave setting}
+    "F33": {name: AC overcurrent, category: overcurrent}
+    "F34": {name: AC overload (backup), category: overload}
+    "F35": {name: No AC grid, category: grid_loss}
+    "F41": {name: Parallel system stopped, category: comm}
+    "F42": {name: AC line low voltage, category: grid_undervoltage}
+    "F47": {name: AC overfrequency, category: grid_frequency}
+    "F48": {name: AC underfrequency, category: grid_frequency}
+    "F55": {name: DC busbar voltage too high, category: bus}
+    "F56": {name: DC busbar voltage too low / battery voltage low, category: battery}
+    "F58": {name: BMS communication fault, category: battery_comm}
+    "F62": {name: DRM / remote shutdown, category: config, severity: info}
+    "F63": {name: ARC fault, category: arc}
+    "F64": {name: Heat sink high temperature, category: overtemp}
+    _default: {name: Deye fault, action: ดู F-code บนหน้าจอหรือ Solarman แล้วเทียบตาราง Fault ในคู่มือ Deye}
+
+  # =========================================================================== SOFAR HYD (ID codes)
+  sofar:
+    "ID01": {name: Grid overvoltage (GridOVP), category: grid_overvoltage}
+    "ID02": {name: Grid undervoltage (GridUVP), category: grid_undervoltage}
+    "ID03": {name: Grid overfrequency (GridOFP), category: grid_frequency}
+    "ID04": {name: Grid underfrequency (GridUFP), category: grid_frequency}
+    "ID05": {name: PV undervoltage, category: pv_low}
+    "ID09": {name: Grid overvoltage instantaneous, category: grid_overvoltage}
+    "ID10": {name: Grid 10-min overvoltage, category: grid_overvoltage}
+    "ID12": {name: Grid undervoltage instantaneous, category: grid_undervoltage}
+    "ID14": {name: Grid frequency abnormal, category: grid_frequency}
+    "ID17": {name: Grid current sampling error, category: device_fault}
+    "ID18": {name: DC injection current, category: dc_injection}
+    "ID21": {name: Leakage current sampling error, category: device_fault}
+    "ID24": {name: Insulation resistance low, category: insulation}
+    "ID25": {name: Leakage current too high, category: leakage}
+    "ID26": {name: PV overvoltage, category: dc_overvoltage}
+    "ID27": {name: Bus voltage too high, category: bus}
+    "ID29": {name: Bus voltage too low, category: bus}
+    "ID41": {name: Relay check fault, category: relay}
+    "ID42": {name: Insulation resistance low (fault), category: insulation}
+    "ID43": {name: PE connection abnormal, category: insulation, action: ตรวจสายดิน PE ของ inverter}
+    "ID50": {name: Inverter overtemperature, category: overtemp}
+    "ID53": {name: Leakage current sensor fault, category: device_fault}
+    "ID56": {name: Battery overvoltage, category: battery}
+    "ID57": {name: Battery undervoltage, category: battery}
+    "ID58": {name: BMS communication fault, category: battery_comm}
+    "ID60": {name: Backup overload, category: overload}
+    "ID70": {name: Grid overcurrent, category: overcurrent}
+    "ID82": {name: Meter communication fault, category: meter_comm}
+    "ID84": {name: Arc fault, category: arc}
+    _default: {name: Sofar fault, action: ดู ID code บนหน้าจอหรือ SolarMAN แล้วเทียบตารางในคู่มือ Sofar}
+
+  # =========================================================================== SOLAX X1/X3 hybrid (IE codes) + run mode
+  solax:
+    "IE01": {name: TZ protect (hardware protection), category: device_fault, aliases: ["IE 01"]}
+    "IE02": {name: Grid lost, category: grid_loss, aliases: ["IE 02"]}
+    "IE03": {name: Grid voltage fault, category: grid_overvoltage, aliases: ["IE 03"]}
+    "IE04": {name: Grid frequency fault, category: grid_frequency, aliases: ["IE 04"]}
+    "IE05": {name: PV voltage fault, category: dc_overvoltage, aliases: ["IE 05"]}
+    "IE06": {name: Bus voltage fault, category: bus, aliases: ["IE 06"]}
+    "IE07": {name: Battery voltage fault, category: battery, aliases: ["IE 07"]}
+    "IE08": {name: AC 10-minute voltage fault, category: grid_overvoltage, aliases: ["IE 08"]}
+    "IE09": {name: DC injection overcurrent (DCI OCP), category: dc_injection, aliases: ["IE 09"]}
+    "IE10": {name: DC overvoltage (DCV OVP), category: dc_overvoltage, aliases: ["IE 10"]}
+    "IE11": {name: Software overcurrent (SW OCP), category: overcurrent, aliases: ["IE 11"]}
+    "IE12": {name: Residual current overcurrent (RC OCP), category: leakage, aliases: ["IE 12"]}
+    "IE13": {name: Isolation fault, category: insulation, aliases: ["IE 13"]}
+    "IE14": {name: Temperature over fault, category: overtemp, aliases: ["IE 14"]}
+    "IE15": {name: Battery connection direction fault, category: battery_reverse, aliases: ["IE 15"]}
+    "IE16": {name: EPS overload, category: overload, aliases: ["IE 16"]}
+    "IE17": {name: EPS overvoltage, category: device_fault, aliases: ["IE 17"]}
+    "IE18": {name: Input overcurrent, category: overcurrent, aliases: ["IE 18"]}
+    "IE19": {name: EPS voltage low / battery low, category: battery, aliases: ["IE 19"]}
+    "IE20": {name: Internal communication fault, category: device_fault, aliases: ["IE 20"]}
+    "IE21": {name: Temperature sensor fault, category: device_fault, aliases: ["IE 21"]}
+    "IE25": {name: Internal communication fault (Inter com), category: device_fault, aliases: ["IE 25"]}
+    "IE26": {name: Fan fault, category: fan, aliases: ["IE 26"]}
+    "IE28": {name: BMS communication lost, category: battery_comm, aliases: ["IE 28", "BMS Lost"]}
+    "IE29": {name: Meter communication lost, category: meter_comm, aliases: ["IE 29", "Meter Fault"]}
+    "IE30": {name: Battery fault (BMS), category: battery, aliases: ["IE 30"]}
+    "IE32": {name: ARC fault, category: arc, aliases: ["IE 32"]}
+    "mode.3": {name: Run mode = Fault, category: device_fault, action: ดู IE code ในหน้าจอ/SolaXCloud เพื่อรหัสจริง}
+    "mode.4": {name: Run mode = Permanent fault, category: device_fault, action: fault ถาวร ต้องปิดเปิดเครื่องหรือเคลม ดู IE code ประกอบ}
+    _default: {name: SolaX fault, action: อ่านรหัส IE บนหน้าจอ/SolaXCloud แล้วเทียบตารางในคู่มือ}
+
+  # =========================================================================== GOODWE (error names from ET/EH/DT manuals and goodwe lib)
+  goodwe:
+    "Utility Loss": {name: Utility loss, category: grid_loss}
+    "Vac Failure": {name: AC voltage out of range, category: grid_overvoltage, aliases: [Vac Fail, "AC V Outrange"]}
+    "Fac Failure": {name: AC frequency out of range, category: grid_frequency, aliases: [Fac Fail, "AC F Outrange"]}
+    "Utility Phase Failure": {name: Utility phase failure, category: grid_undervoltage}
+    "PV Over Voltage": {name: PV overvoltage, category: dc_overvoltage, aliases: [PV Overvoltage]}
+    "Isolation Failure": {name: Isolation failure, category: insulation, aliases: [Isolation Fail, ISO Failure]}
+    "Ground I Failure": {name: Ground current failure, category: leakage, aliases: [Ground Current Failure]}
+    "GFCI Device Check Failure": {name: GFCI device check failure, category: device_fault, aliases: [GFCI Device Failure]}
+    "GFCI Consistency Failure": {name: GFCI consistency failure, category: device_fault}
+    "GFCI Failure": {name: GFCI failure, category: leakage}
+    "Relay Check Failure": {name: Relay check failure, category: relay, aliases: [Relay Failure]}
+    "DC Injection High": {name: DC injection high, category: dc_injection, aliases: [DCI High]}
+    "DCI Consistency Failure": {name: DCI consistency failure, category: device_fault}
+    "Over Temperature": {name: Over temperature, category: overtemp, aliases: [Overtemperature, OverTemperature]}
+    "Internal Fan Failure": {name: Internal fan failure, category: fan, aliases: [Fan Failure]}
+    "Bus Voltage Failure": {name: Bus voltage failure, category: bus, aliases: [BUS Voltage Failure]}
+    "AC HCT Check Failure": {name: AC current sensor check failure, category: device_fault, aliases: [AC HCT Failure]}
+    "External Flash Failure": {name: External flash failure, category: device_fault}
+    "EEPROM R/W Failure": {name: EEPROM read/write failure, category: device_fault}
+    "Back-Up Over Load": {name: Backup overload, category: overload, aliases: [Backup Overload, Back-up Overload]}
+    "Battery Communication Failure": {name: BMS communication failure, category: battery_comm, aliases: [BMS Comm Fail, Battery Comm Fail]}
+    "Meter Communication Failure": {name: Meter communication failure, category: meter_comm, aliases: [Meter Comm Fail]}
+    "ARC Fault": {name: ARC fault, category: arc, aliases: [Arc Fault]}
+    _default: {name: GoodWe error, action: ดู error text ใน SEMS Portal > Alarm หรือ error_codes จาก inverter}
+
+  # =========================================================================== SUNSPEC model 101-103 Evt1 bits (SolarEdge, Fronius, SMA, Delta ... via sunspec adapter)
+  sunspec:
+    "Evt1.b0": {name: Ground fault, category: insulation}
+    "Evt1.b1": {name: DC over voltage, category: dc_overvoltage}
+    "Evt1.b2": {name: AC disconnect open, category: grid_loss, action: สวิตช์/เบรกเกอร์ AC เปิดอยู่ ตรวจ AC disconnect}
+    "Evt1.b3": {name: DC disconnect open, category: pv_low, action: DC switch เปิดอยู่ ปิดสวิตช์ DC}
+    "Evt1.b4": {name: Grid disconnect, category: grid_loss}
+    "Evt1.b5": {name: Cabinet open, category: config, severity: info, action: ฝาเครื่อง/ตู้เปิดอยู่ ปิดฝาให้สนิท}
+    "Evt1.b6": {name: Manual shutdown, category: config, severity: info, action: มีคนสั่งปิดจากปุ่ม/แอป เปิดใหม่เมื่อพร้อม}
+    "Evt1.b7": {name: Over temperature, category: overtemp}
+    "Evt1.b8": {name: Over frequency, category: grid_frequency}
+    "Evt1.b9": {name: Under frequency, category: grid_frequency}
+    "Evt1.b10": {name: AC over voltage, category: grid_overvoltage}
+    "Evt1.b11": {name: AC under voltage, category: grid_undervoltage}
+    "Evt1.b12": {name: Blown string fuse, category: string_abnormal, action: ตรวจฟิวส์ DC ในกล่อง combiner/ใน inverter เปลี่ยนฟิวส์ค่าเดิม และหาสาเหตุ (string ขนานผิด, ช็อต)}
+    "Evt1.b13": {name: Under temperature, category: overtemp, severity: info}
+    "Evt1.b14": {name: Memory loss, category: device_fault}
+    "Evt1.b15": {name: Hardware test failure, category: device_fault}
+    "St.7": {name: Inverter state = Fault, category: device_fault, action: อ่าน vendor event (EvtVnd) หรือรหัสจากหน้าจอผู้ผลิต}
+    _default: {name: SunSpec vendor event, action: ดูรหัสจากหน้าจอ/แอปผู้ผลิต (EvtVnd เป็น bitfield เฉพาะยี่ห้อ)}
+
+  # =========================================================================== SOLAREDGE (SetApp error codes) - most also arrive as SunSpec Evt1 bits
+  solaredge:
+    "18x38": {name: AC voltage too high (Vac max), category: grid_overvoltage, aliases: ["Vac Max", "AC Voltage Too High"]}
+    "18x37": {name: AC voltage too low (Vac min), category: grid_undervoltage, aliases: ["Vac Min", "AC Voltage Too Low"]}
+    "18x75": {name: Temperature too high, category: overtemp, aliases: ["Temperature Too High"]}
+    "18x86": {name: Isolation fault, category: insulation, aliases: ["Isolation Fault", "RISO", "03x9a", "3x9a"]}
+    "18x3D": {name: Ground current too high, category: leakage, aliases: ["Ground Current", "RCD"]}
+    "18xC": {name: Arc fault detected, category: arc, aliases: ["Arc Fault", "AFCI"]}
+    "18xA8": {name: Hardware error, category: device_fault, aliases: ["18xA6", "18xA7", "18xAA", "Hardware Error"]}
+    "DC Voltage Too High": {name: DC voltage too high, category: dc_overvoltage}
+    "Fac Max": {name: AC frequency too high, category: grid_frequency, aliases: ["Fac Min", "AC Frequency"]}
+    "Islanding": {name: Islanding detected, category: islanding}
+    "Optimizer": {name: Optimizer communication / P_OK error, category: optimizer, aliases: ["P_OK", "Optimiser"]}
+    "Battery": {name: Battery not communicating / lockout, category: battery_comm, aliases: ["Battery Not Communicating", "Lockout"]}
+    "Backup Overload": {name: Backup overload, category: overload}
+    _default: {name: SolarEdge error, action: อ่านรหัสจาก SetApp/monitoring portal (Error XXxYY) แล้วเทียบเอกสาร "Troubleshooting SolarEdge Systems"}
+
+  # =========================================================================== FRONIUS state codes (Symo / Primo / Gen24)
+  fronius:
+    "102": {name: AC voltage too high, category: grid_overvoltage}
+    "103": {name: AC voltage too low, category: grid_undervoltage}
+    "105": {name: AC frequency too high, category: grid_frequency}
+    "106": {name: AC frequency too low, category: grid_frequency}
+    "107": {name: AC grid outside permissible limits, category: grid_loss}
+    "108": {name: Stand-alone (islanding) operation detected, category: islanding}
+    "112": {name: RCMU error (residual current), category: leakage}
+    "240": {name: Arc detection triggered, category: arc, aliases: ["241", "242"]}
+    "301": {name: Overcurrent AC, category: overcurrent}
+    "302": {name: Overcurrent DC, category: overcurrent}
+    "303": {name: DC-DC overtemperature, category: overtemp}
+    "304": {name: Interior overtemperature, category: overtemp}
+    "306": {name: Power low (PV insufficient), category: pv_low, severity: info}
+    "307": {name: DC low, category: pv_low, severity: info}
+    "308": {name: Intermediate circuit voltage too high, category: bus}
+    "309": {name: Input voltage MPPT1 too high, category: dc_overvoltage, aliases: ["313"]}
+    "311": {name: Polarity of DC strings reversed, category: dc_reverse}
+    "325": {name: Overtemperature in connection area, category: overtemp}
+    "326": {name: Fan 1 error, category: fan, aliases: ["327"]}
+    "401": {name: No communication with power stage set, category: device_fault}
+    "408": {name: DC feed-in detected, category: dc_injection}
+    "443": {name: Intermediate circuit voltage too low or asymmetric, category: bus}
+    "447": {name: Insulation error, category: insulation}
+    "448": {name: Neutral conductor not connected, category: grid_loss, action: สาย N ไม่ต่อหรือหลุด ตรวจขั้ว N ที่ inverter}
+    "457": {name: Grid relay sticking or N-PE voltage too high, category: relay}
+    "463": {name: AC polarity reversed, category: config, action: สลับ L/N ที่ขั้ว AC}
+    "474": {name: RCMU sensor faulty, category: device_fault}
+    "475": {name: Solar panel ground fault / insulation fault, category: insulation}
+    "502": {name: Insulation error on solar panels, category: insulation}
+    "509": {name: No energy fed into grid in past 24 hours, category: pv_low, severity: info, action: ตรวจว่า DC switch เปิด แผงไม่โดนบัง หรือ inverter ค้าง}
+    "515": {name: No communication with filter, category: device_fault}
+    "516": {name: No communication with storage unit, category: battery_comm}
+    "517": {name: Power derating caused by high temperature, category: overtemp}
+    "522": {name: DC low string 1, category: pv_low, aliases: ["523"], severity: info}
+    "560": {name: Derating caused by over-frequency, category: grid_frequency, severity: info}
+    "567": {name: Grid voltage dependent power reduction active, category: grid_overvoltage, severity: info}
+    "607": {name: RCMU error, category: leakage}
+    "751": {name: Time lost (RTC), category: firmware, aliases: ["752", "753"], action: ตั้งเวลาใหม่ใน web UI ถ้าเกิดซ้ำแบตเตอรี่ RTC หมด}
+    _default: {name: Fronius state code, action: เทียบ state code กับตารางในคู่มือ Fronius (100 = grid, 300 = DC/AC hardware, 400/500 = internal, 700 = system)}
+
+  # =========================================================================== SMA event numbers (Sunny Boy / Tripower)
+  sma:
+    "101": {name: Grid fault (voltage), category: grid_overvoltage, aliases: ["102", "103"]}
+    "202": {name: Grid fault (undervoltage / overvoltage), category: grid_undervoltage, aliases: ["203", "205", "206"]}
+    "301": {name: Grid fault 10-min average overvoltage, category: grid_overvoltage}
+    "401": {name: Grid fault (stand-alone / islanding), category: islanding, aliases: ["404"]}
+    "501": {name: Grid fault (frequency), category: grid_frequency, aliases: ["507"]}
+    "601": {name: High DC component in grid current, category: dc_injection}
+    "701": {name: Frequency not permitted, category: grid_frequency}
+    "901": {name: PE connection missing, category: insulation, action: ต่อสาย PE ให้ครบ}
+    "1001": {name: L and N swapped, category: config, action: สลับสาย L/N ที่ขั้ว AC}
+    "1302": {name: Waiting for grid voltage, category: grid_loss, severity: info}
+    "1501": {name: Reconnection fault grid, category: grid_loss}
+    "3401": {name: DC overvoltage, category: dc_overvoltage, aliases: ["3402", "3407"]}
+    "3501": {name: Insulation failure, category: insulation}
+    "3601": {name: High discharge current, category: leakage}
+    "3701": {name: Residual current too high, category: leakage}
+    "3801": {name: DC overcurrent, category: overcurrent, aliases: ["3802"]}
+    "3901": {name: Waiting for DC start conditions, category: pv_low, severity: info, aliases: ["3902"]}
+    "6002": {name: Self-diagnosis > interference device, category: device_fault, aliases: ["6001", "6120", "6301", "6302", "6401", "6438"]}
+    "7002": {name: Sensor fault interior temperature, category: device_fault}
+    "7702": {name: Device fault / power stage, category: device_fault, aliases: ["7701"]}
+    "7801": {name: Surge arrester error, category: device_fault, action: ตรวจ SPD ภายในและเปลี่ยนโมดูลที่แสดงสีแดง}
+    "8003": {name: Derating due to temperature, category: overtemp, severity: info}
+    "9002": {name: SMA Grid Guard code invalid, category: config}
+    "10108": {name: Time adjusted / old time, category: firmware, severity: info}
+    _default: {name: SMA event, action: ดู event number ใน Sunny Portal/ennexOS แล้วเทียบตาราง "Event messages" ในคู่มือ}
+
+  # =========================================================================== GROWATT (fault names / error numbers)
+  growatt:
+    "No AC Connection": {name: No AC connection, category: grid_loss, aliases: ["No Utility", "Error 202"]}
+    "AC V Outrange": {name: AC voltage out of range, category: grid_overvoltage, aliases: ["Error 300", "Vac"]}
+    "AC F Outrange": {name: AC frequency out of range, category: grid_frequency, aliases: ["Error 301"]}
+    "PV Isolation Low": {name: PV isolation low, category: insulation, aliases: ["Error 203", "ISO"]}
+    "Residual I High": {name: Residual current high, category: leakage, aliases: ["Error 201", "GFCI"]}
+    "Output High DCI": {name: Output DC injection high, category: dc_injection, aliases: ["Error 209"]}
+    "PV Voltage High": {name: PV voltage high, category: dc_overvoltage, aliases: ["Error 200"]}
+    "Over Temperature": {name: Over temperature, category: overtemp, aliases: ["NTC", "Error 302"]}
+    "Auto Test Failed": {name: Auto test failed, category: relay}
+    "BMS COM Fault": {name: BMS communication fault, category: battery_comm, aliases: ["Battery Comm", "Error 411"]}
+    "Bat Voltage High": {name: Battery voltage high, category: battery, aliases: ["Bat Voltage Low"]}
+    "Overload": {name: EPS overload, category: overload, aliases: ["Error 408"]}
+    "Relay Fault": {name: Relay fault, category: relay, aliases: ["Error 401"]}
+    _default: {name: Growatt fault, action: ดู fault/error number ใน ShineServer แล้วเทียบตารางในคู่มือ}
+
+  # =========================================================================== SIGENERGY (OpenAPI alarmCode) - extend from the portal "Error Code List"
+  sigen:
+    "1001": {name: Sigen alarm 1001 (see Error Code List), category: device_fault, action: เปิดหน้า Error Code List ใน developer.sigencloud.com (บัญชี vendor) เพื่อความหมายและวิธีแก้ของรหัสนี้}
+    "plant.fault": {name: Plant running state = fault, category: device_fault, action: ดู alarm ในแอป mySigen / Sigen Cloud เพื่อรหัสจริงของ inverter หรือแบตเตอรี่}
+    _default: {name: Sigen alarm, action: ดูรหัสในแอป mySigen หรือ Sigen Cloud > Alarm และเพิ่มลงตารางนี้เมื่อทราบความหมาย}
+
+  # =========================================================================== SOLARMAN cloud alert names (Deye / Sofar cloud) - matched by alias text
+  solarman:
+    "Grid Loss": {name: No AC grid (F35), category: grid_loss, aliases: ["F35", "No Grid"]}
+    "GFCI": {name: Leakage current (F16/F23), category: leakage, aliases: ["F16", "F23", "Leakage"]}
+    "Insulation": {name: DC insulation (F24), category: insulation, aliases: ["F24", "ISO"]}
+    "BMS": {name: BMS communication (F58), category: battery_comm, aliases: ["F58"]}
+    "Arc": {name: Arc fault (F63), category: arc, aliases: ["F63"]}
+    "Temperature": {name: Heat sink temperature (F64), category: overtemp, aliases: ["F64"]}
+    "Overload": {name: AC overload (F34), category: overload, aliases: ["F34"]}
+    _default: {name: Solarman alert, action: เปิด SolarMAN/Deye Cloud > Alerts ดู F-code หรือ ID code แล้วเทียบตาราง deye / sofar}

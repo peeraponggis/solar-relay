@@ -1038,7 +1038,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"alarm\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> pivot(rowKey: [\"_time\", \"device_id\", \"brand\", \"code\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"alarm\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> pivot(rowKey: [\"_time\", \"device_id\", \"brand\", \"code\", \"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)",
           "refId": "A"
         }
       ],
@@ -1124,7 +1124,7 @@
           }
         ]
       },
-      "description": "alarm จาก measurement alarm: code, message, severity, active (1 = ยังค้าง)"
+      "description": "alarm จาก measurement alarm: code, message, severity, category, advice (คำแนะนำแก้ไขจาก alarm_catalog.yaml), active (1 = ยังค้าง)"
     },
     {
       "id": 14,

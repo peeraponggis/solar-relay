@@ -35,6 +35,9 @@ solar-relay = "solar_relay.__main__:main"
 [tool.setuptools.packages.find]
 include = ["solar_relay*"]
 
+[tool.setuptools.package-data]
+solar_relay = ["alarm_catalog.yaml"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

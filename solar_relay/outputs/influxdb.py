@@ -49,7 +49,9 @@ class InfluxDBOutput(BaseOutput):
         pts = [p]
         for a in reading.alarms:
             pts.append(Point("alarm").tag("device_id", reading.device_id).tag("brand", reading.brand).tag("code", a.code)
+                       .tag("category", a.category or "unknown")
                        .field("active", 1 if a.active else 0).field("message", a.message or "").field("severity", a.severity)
+                       .field("advice", a.advice or "")
                        .time(a.raised_at or reading.ts))
         return pts
 

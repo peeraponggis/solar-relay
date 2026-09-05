@@ -99,6 +99,35 @@ def bit_alarms(value: float | str | None, prefix: str, table: dict[int, str] | N
     return alarms
 
 
+def coded_alarms(value: float | str | None, brand: str, table: dict[int, tuple[str, str]], fallback_prefix: str) -> list[Alarm]:
+    """Expand a fault word using a bit -> (vendor code, text) table so the alarm code matches the
+    vendor manual and alarm_catalog.yaml (e.g. huawei.2032, deye.F16, sofar.ID01).  Bits missing from
+    the table fall back to <fallback_prefix>.b<bit>."""
+    if value is None or isinstance(value, str):
+        return []
+    v = int(value)
+    alarms = []
+    for bit in range(32):
+        if v & (1 << bit):
+            code, text = table.get(bit, (f"{fallback_prefix}.b{bit}".split(".", 1)[1], ""))
+            alarms.append(Alarm(code=f"{brand}.{code}", message=text, severity="fault"))
+    return alarms
+
+
+def numbered_alarms(value: float | str | None, brand: str, prefix: str, first: int, width: int = 2,
+                    names: dict[str, str] | None = None) -> list[Alarm]:
+    """Fault word where bit n of word k means code <prefix><first + n> (Deye F01.., Sofar ID01..)."""
+    if value is None or isinstance(value, str):
+        return []
+    v = int(value)
+    alarms = []
+    for bit in range(16):
+        if v & (1 << bit):
+            code = f"{prefix}{first + bit:0{width}d}"
+            alarms.append(Alarm(code=f"{brand}.{code}", message=(names or {}).get(code, ""), severity="fault"))
+    return alarms
+
+
 # ---------------------------------------------------------------------------
 # HUAWEI SUN2000 (Modbus TCP 502 direct, or SDongle 502 / 6607; unit id 1, meter/battery on same unit)
 # ---------------------------------------------------------------------------
@@ -147,14 +176,24 @@ HUAWEI_STATUS = {
     0x0A00: "Running: off-grid charging", 0xA000: "Standby: no irradiation",
 }
 
-HUAWEI_ALARM1 = {0: "High string input voltage", 1: "DC arc fault", 2: "String reverse connection", 3: "String current backfeed",
-                 4: "Abnormal string power", 5: "AFCI self-check fail", 6: "Phase wire short-circuited to PE", 7: "Grid loss",
-                 8: "Grid undervoltage", 9: "Grid overvoltage", 10: "Grid volt. imbalance", 11: "Grid overfrequency",
-                 12: "Grid underfrequency", 13: "Unstable grid frequency", 14: "Output overcurrent", 15: "Output DC component overhigh"}
-HUAWEI_ALARM2 = {0: "Abnormal residual current", 1: "Abnormal grounding", 2: "Low insulation resistance", 3: "Overtemperature",
-                 4: "Device fault", 5: "Abnormal device running", 6: "Abnormal string power", 7: "Fan failure",
-                 8: "Abnormal string current (PID)", 9: "Abnormal PID", 10: "Communication with EMI failed", 11: "Abnormal grid voltage",
-                 12: "Abnormal power grid", 13: "Meter abnormal", 14: "Abnormal battery", 15: "Sensor error"}
+# bit -> (Huawei alarm ID as shown in FusionSolar / manual, text)   [SUN2000 Modbus Interface Definitions, registers 32008-32010]
+HUAWEI_ALARM1 = {0: ("2001", "High string input voltage"), 1: ("2002", "DC arc fault"), 2: ("2011", "String reverse connection"),
+                 3: ("2012", "String current backfeed"), 4: ("2013", "Abnormal string power"), 5: ("2021", "AFCI self-check fail"),
+                 6: ("2031", "Phase wire short-circuited to PE"), 7: ("2032", "Grid loss"), 8: ("2033", "Grid undervoltage"),
+                 9: ("2034", "Grid overvoltage"), 10: ("2035", "Grid voltage imbalance"), 11: ("2036", "Grid overfrequency"),
+                 12: ("2037", "Grid underfrequency"), 13: ("2038", "Unstable grid frequency"), 14: ("2039", "Output overcurrent"),
+                 15: ("2040", "Output DC component overhigh")}
+HUAWEI_ALARM2 = {0: ("2051", "Abnormal residual current"), 1: ("2061", "Abnormal grounding"), 2: ("2062", "Low insulation resistance"),
+                 3: ("2063", "Overtemperature"), 4: ("2064", "Device fault"), 5: ("2065", "Upgrade failed or version mismatch"),
+                 6: ("2066", "License expired"), 7: ("61440", "Faulty monitoring unit"), 8: ("2067", "Faulty power collector"),
+                 9: ("2068", "Battery abnormal"), 10: ("2070", "Active islanding"), 11: ("2071", "Passive islanding"),
+                 12: ("2072", "Transient AC overvoltage"), 13: ("2075", "Peripheral port short circuit"),
+                 14: ("2077", "Abnormal grounding or AC wiring"), 15: ("2080", "Abnormal PV module configuration")}
+HUAWEI_ALARM3 = {0: ("2081", "Optimizer fault"), 1: ("2085", "Built-in PID operation abnormal"), 2: ("2014", "High input string voltage to ground"),
+                 3: ("2086", "External fan abnormal"), 4: ("2069", "Battery reverse connection"), 5: ("2082", "On-grid/off-grid controller abnormal"),
+                 6: ("2015", "PV string loss"), 7: ("2087", "Internal fan abnormal"), 8: ("2088", "DC protection unit abnormal"),
+                 9: ("2089", "EL unit abnormal"), 10: ("2090", "Active adjustment instruction abnormal"),
+                 11: ("2091", "Reactive adjustment instruction abnormal"), 12: ("2092", "CT wiring abnormal"), 13: ("2003", "DC arc fault (manual clear)")}
 
 
 def finalize_huawei(v: dict, r: Reading) -> Reading:
@@ -181,9 +220,9 @@ def finalize_huawei(v: dict, r: Reading) -> Reading:
         pv_v, pv_a = v.get(f"pv{i}_v"), v.get(f"pv{i}_a")
         if pv_v:
             r.strings[f"pv{i}"] = {"v": pv_v, "a": pv_a, "w": round(pv_v * pv_a, 1)}
-    r.alarms += bit_alarms(v.get("alarm1"), "huawei.alarm1", HUAWEI_ALARM1)
-    r.alarms += bit_alarms(v.get("alarm2"), "huawei.alarm2", HUAWEI_ALARM2)
-    r.alarms += bit_alarms(v.get("alarm3"), "huawei.alarm3")
+    r.alarms += coded_alarms(v.get("alarm1"), "huawei", HUAWEI_ALARM1, "huawei.alarm1")
+    r.alarms += coded_alarms(v.get("alarm2"), "huawei", HUAWEI_ALARM2, "huawei.alarm2")
+    r.alarms += coded_alarms(v.get("alarm3"), "huawei", HUAWEI_ALARM3, "huawei.alarm3")
     r.extra.update(model=v.get("model"), sn=v.get("sn"), efficiency=v.get("efficiency"))
     return r
 
@@ -238,10 +277,13 @@ SOLIS: list[Reg] = [
 SOLIS_STATUS = {0: "Waiting", 1: "Open loop operation", 2: "Soft start", 3: "Generating", 4000: "Fault/standby (4000+)",
                 4100: "Grid surge", 4110: "Fan fault", 4116: "Grid off", 4117: "Grid overvoltage", 4118: "Grid undervoltage",
                 4120: "Grid overfrequency", 4121: "Grid underfrequency", 8010: "Standby", 8011: "Initializing"}
-SOLIS_FAULT1 = {0: "No grid", 1: "Grid overvoltage", 2: "Grid undervoltage", 3: "Grid overfrequency", 4: "Grid underfrequency",
-                5: "Grid impedance too large", 6: "Grid voltage unbalanced", 7: "Grid frequency jitter", 8: "Grid overcurrent",
-                9: "Grid current sampling error", 10: "DC bus overvoltage", 11: "DC bus undervoltage", 12: "Inverter overtemperature",
-                13: "Insulation fault", 14: "Leakage current", 15: "Arc fault"}
+# bit of "Fault status 01" (33116) -> (Solis display code, text); other fault words fall back to solis.fault<N>.b<bit>
+SOLIS_FAULT1 = {0: ("NO-GRID", "No grid"), 1: ("OV-G-V", "Grid overvoltage"), 2: ("UN-G-V", "Grid undervoltage"),
+                3: ("OV-G-F", "Grid overfrequency"), 4: ("UN-G-F", "Grid underfrequency"), 5: ("G-IMP", "Grid impedance too large"),
+                6: ("G-PHASE", "Grid voltage unbalanced"), 7: ("GRID-INTF", "Grid frequency jitter / interference"),
+                8: ("OV-G-I", "Grid overcurrent"), 9: ("DC-INTF", "Grid current sampling error"), 10: ("OV-BUS", "DC bus overvoltage"),
+                11: ("UN-BUS", "DC bus undervoltage"), 12: ("OV-TEM", "Inverter overtemperature"), 13: ("PV ISO-PRO", "Insulation fault"),
+                14: ("ILeak-PRO", "Leakage current"), 15: ("ARC-FAULT", "Arc fault")}
 
 
 def finalize_solis(v: dict, r: Reading) -> Reading:
@@ -271,7 +313,7 @@ def finalize_solis(v: dict, r: Reading) -> Reading:
         pv_v, pv_a = v.get(f"pv{i}_v"), v.get(f"pv{i}_a")
         if pv_v:
             r.strings[f"pv{i}"] = {"v": pv_v, "a": pv_a, "w": round(pv_v * pv_a, 1)}
-    r.alarms += bit_alarms(v.get("fault1"), "solis.fault1", SOLIS_FAULT1)
+    r.alarms += coded_alarms(v.get("fault1"), "solis", SOLIS_FAULT1, "solis.fault1")
     for k in ("fault2", "fault3", "fault4", "fault5"):
         r.alarms += bit_alarms(v.get(k), f"solis.{k}")
     r.extra.update(backup_w=v.get("backup_w"), working_status=v.get("working_status"))
@@ -292,6 +334,7 @@ SUNGROW: list[Reg] = [
     Reg("ac_w", _s(5031), "u32", 1.0, 4, "little"),
     Reg("grid_hz", _s(5036), "u16", 0.1, 4),
     Reg("status", _s(5038), "u16", 1.0, 4),
+    Reg("fault_code", _s(5045), "u16", 1.0, 4),        # 3-digit fault code as shown on iSolarCloud (0 = none)
     # hybrid section
     Reg("running_state", _s(13001), "u16", 1.0, 4),
     Reg("load_w", _s(13008), "i32", 1.0, 4, "little"),
@@ -337,7 +380,10 @@ def finalize_sungrow(v: dict, r: Reading) -> Reading:
     r.load_day_kwh = v.get("load_day_kwh")
     st = int(v.get("status", -1))
     r.status = SUNGROW_STATUS.get(st, f"status 0x{st:04X}")
-    if st in (0x5500, 0x2500):
+    fc = int(v.get("fault_code", 0) or 0)
+    if fc:
+        r.alarms.append(Alarm(code=f"sungrow.{fc:03d}", severity="fault"))
+    elif st in (0x5500, 0x2500):
         r.alarms.append(Alarm(code=f"sungrow.state.{st:04X}", message=r.status, severity="fault"))
     for i in (1, 2):
         pv_v, pv_a = v.get(f"pv{i}_v"), v.get(f"pv{i}_a")
@@ -461,8 +507,9 @@ def finalize_deye(v: dict, r: Reading) -> Reading:
     r.grid_import_day_kwh, r.grid_export_day_kwh, r.load_day_kwh = v.get("grid_import_day_kwh"), v.get("grid_export_day_kwh"), v.get("load_day_kwh")
     st = int(v.get("status", -1))
     r.status = DEYE_STATUS.get(st, f"status {st}")
-    for k in ("fault1", "fault2", "fault3", "fault4"):
-        r.alarms += bit_alarms(v.get(k), f"deye.{k}")
+    # Deye: fault word k bit n  ->  F(16*k + n + 1)   (F01..F64)
+    for i, k in enumerate(("fault1", "fault2", "fault3", "fault4")):
+        r.alarms += numbered_alarms(v.get(k), "deye", "F", 16 * i + 1)
     for i in (1, 2):
         if v.get(f"pv{i}_v"):
             r.strings[f"pv{i}"] = {"v": v[f"pv{i}_v"], "a": v.get(f"pv{i}_a"), "w": v.get(f"pv{i}_w")}
@@ -515,8 +562,9 @@ def finalize_sofar(v: dict, r: Reading) -> Reading:
     r.status = SOFAR_STATUS.get(st, f"status {st}")
     if st in (4, 5):
         r.alarms.append(Alarm(code=f"sofar.state.{st}", message=r.status, severity="fault"))
-    r.alarms += bit_alarms(v.get("fault1"), "sofar.fault1")
-    r.alarms += bit_alarms(v.get("fault2"), "sofar.fault2")
+    # Sofar: fault word 1 bit n -> ID(n+1), fault word 2 bit n -> ID(n+17)
+    r.alarms += numbered_alarms(v.get("fault1"), "sofar", "ID", 1)
+    r.alarms += numbered_alarms(v.get("fault2"), "sofar", "ID", 17)
     for i in (1, 2):
         if v.get(f"pv{i}_v"):
             r.strings[f"pv{i}"] = {"v": v[f"pv{i}_v"], "a": v.get(f"pv{i}_a"), "w": v.get(f"pv{i}_w")}

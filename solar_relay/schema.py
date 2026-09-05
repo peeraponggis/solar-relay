@@ -22,6 +22,8 @@ class Alarm:
     severity: str = "warning"      # info | warning | fault
     active: bool = True            # False = recovery event
     raised_at: Optional[datetime] = None
+    advice: str = ""               # repair guidance, filled by alarm_catalog.enrich_alarm
+    category: str = ""             # grid_overvoltage | insulation | leakage | overtemp | arc | battery | comm | ...
     raw: dict[str, Any] = field(default_factory=dict)
 
 

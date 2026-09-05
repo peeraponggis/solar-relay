@@ -62,7 +62,7 @@ ALARM_TABLE = f'''from(bucket: v.defaultBucket)
   |> range(start: v.timeRangeStart, stop: v.timeRangeStop)
   |> filter(fn: (r) => r._measurement == "alarm")
 {FILTER}
-  |> pivot(rowKey: ["_time", "device_id", "brand", "code"], columnKey: ["_field"], valueColumn: "_value")
+  |> pivot(rowKey: ["_time", "device_id", "brand", "code", "category"], columnKey: ["_field"], valueColumn: "_value")
   |> group()
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: 200)'''
@@ -181,7 +181,7 @@ def build() -> dict:
               {"showHeader": True, "sortBy": [{"displayName": "time", "desc": True}]},
               overrides=[bg_threshold("active", RED1, {"0": "recovered", "1": "ACTIVE"}),
                          {"matcher": {"id": "byName", "options": "_time"}, "properties": [{"id": "displayName", "value": "time"}]}],
-              desc="alarm จาก measurement alarm: code, message, severity, active (1 = ยังค้าง)"),
+              desc="alarm จาก measurement alarm: code, message, severity, category, advice (คำแนะนำแก้ไขจาก alarm_catalog.yaml), active (1 = ยังค้าง)"),
         # ---- diagnostics
         ts("PV strings power", (0, 38, 12, 8), [target(multi_field('r._field =~ /^pv[0-9]+_w$/'))], "watt",
            "pv1..pvN ต่ออุปกรณ์ ใช้หา string ที่ผลิตต่ำผิดปกติ"),
