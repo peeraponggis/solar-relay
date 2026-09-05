@@ -45,6 +45,19 @@ mkdir config && cp config.example.yaml config/config.yaml && cp .env.example .en
 docker compose up -d --build
 ```
 
+## Grafana dashboard
+
+`docker compose up` จะ provision datasource InfluxDB และ dashboard **Solar Relay - Overview** (โฟลเดอร์ Solar) ให้อัตโนมัติ
+เปิดที่ http://localhost:3000 (admin / ค่า `GRAFANA_PASS` ใน .env)
+
+- ตัวกรอง Device และ Brand ด้านบน เลือกได้หลายค่า
+- แถว KPI: PV, Load, Grid (+ซื้อ/-ขาย), Battery (+ชาร์จ/-คาย), SOC, Energy วันนี้, Active alarms, Devices offline
+- ตาราง Device status ค่าล่าสุดต่ออุปกรณ์ (offline และ alarm ขึ้นสีแดง)
+- กราฟ Power flow, Battery SOC, Energy per day, PV strings, Temperatures, Grid voltage/frequency
+- Alarm log จาก measurement `alarm` และ annotation สีแดงบนทุกกราฟเมื่อมี alarm เกิด
+
+ไฟล์ JSON สร้างจาก `grafana/build_dashboard.py` หากแก้ query ให้แก้ที่สคริปต์แล้วรัน `python grafana/build_dashboard.py` (มี test ตรวจว่า JSON ตรงกับสคริปต์)
+
 ## Schema กลาง (`solar_relay/schema.py`)
 
 เครื่องหมายทุกยี่ห้อถูกแปลงให้เหมือนกัน:

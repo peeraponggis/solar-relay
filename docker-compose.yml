@@ -34,6 +34,10 @@ services:
     ports: ["3000:3000"]
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
+      # used by grafana/provisioning/datasources/influx.yaml
+      INFLUX_ORG: ${INFLUX_ORG:-solar}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-solar}
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
