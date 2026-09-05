@@ -137,7 +137,26 @@ devices:
     enabled: false
     options: {username: "${SMA_USER}", password: "${SMA_PASS}"}
 
+# ------------------------------------------------------------------ customers / sites (built-in web UI)
+sites:
+  - id: site-somchai
+    name: บ้านคุณสมชาย
+    customer: สมชาย ใจดี
+    phone: "081-234-5678"
+    address: นนทบุรี
+    note: หลังคา 10 kWp + LUNA2000 10 kWh
+    devices: [huawei-sun2000]
+  - id: site-abc
+    name: โรงงาน ABC
+    customer: คุณวิภา (ฝ่ายซ่อมบำรุง)
+    phone: "02-123-4567"
+    address: สมุทรปราการ
+    devices: [solis-s6-hybrid, sungrow-sh10rt, solax-x3-hybrid]
+  # หรือระบุที่ device ด้วย  site: <id>  ก็ได้ (สร้างไซต์ให้อัตโนมัติ)
+
 outputs:
+  - type: web                      # Thai web UI + JSON API  ->  http://<host>:8080/
+    options: {host: 0.0.0.0, port: 8080}
   - type: influxdb
     options: {url: "${INFLUX_URL:http://influxdb:8086}", token: "${INFLUX_TOKEN}", org: "${INFLUX_ORG:solar}", bucket: "${INFLUX_BUCKET:solar}"}
   - type: homeassistant            # MQTT + HA discovery (use type: mqtt for plain MQTT)

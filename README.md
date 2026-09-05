@@ -64,6 +64,28 @@ docker run -d --name solar-relay -v $PWD/config:/config:ro --env-file .env ghcr.
 - `.github/workflows/release.yml` เมื่อ push tag `v*` จะสร้าง GitHub Release อัตโนมัติ ใส่ release notes จากหัวข้อของเวอร์ชันนั้นใน CHANGELOG.md บวกคำสั่ง docker pull และแนบ wheel/sdist สำหรับ tag ที่มีอยู่แล้วให้รันด้วยมือที่ Actions → Release → Run workflow ใส่ชื่อ tag
 - ออก release: เพิ่มหัวข้อ `## vX.Y.Z` ใน CHANGELOG.md, ปรับ version ใน pyproject.toml และ solar_relay/__init__.py แล้ว `git tag vX.Y.Z && git push --tags`
 
+## Web UI ในตัว (ภาษาไทย)
+
+ใส่ output `web` ใน config.yaml แล้วเปิด http://localhost:8080/ ไม่ต้องมี Grafana หรือ Docker
+
+```yaml
+sites:
+  - {id: site-a, name: บ้านคุณสมชาย, customer: สมชาย ใจดี, phone: "081-234-5678", address: นนทบุรี, devices: [huawei-sun2000]}
+outputs:
+  - type: web
+    options: {host: 0.0.0.0, port: 8080}
+```
+
+- **ภาพรวม** KPI รวมทุกไซต์ (PV, โหลด, กริดซื้อ/ขาย, แบตชาร์จ/คาย, พลังงานวันนี้) และการ์ดต่อไซต์
+- **ไซต์/ลูกค้า** ตารางลูกค้า โทร ที่อยู่ สถานะ กดเข้าดูอุปกรณ์ในไซต์
+- **ทีมบริการ** งานที่ต้องทำ: อุปกรณ์ออฟไลน์ + แจ้งเตือนค้างเรียงตามความรุนแรง แต่ละรายการมีชื่อลูกค้า เบอร์โทร รหัส สาเหตุ วิธีตรวจแก้จาก alarm catalog ปุ่มรับทราบพร้อมบันทึกชื่อช่าง และประวัติเกิด/หาย/รับทราบ
+- **อุปกรณ์** ค่าล่าสุดทุกเครื่อง กดดูรายละเอียด string แรงดัน ความถี่ อุณหภูมิ พลังงานแยกประเภท
+- **ตรวจสอบ inverter** รัน probe จาก browser ใส่ IP หรือ serial แล้วได้ config มาคัดลอก
+- JSON API สำหรับระบบอื่น `/api/state`, `/api/sites`, `/api/devices/<id>`, `/api/alarms`, `POST /api/alarms/ack`, `POST /api/probe` เอกสารที่ `/api/docs`
+- ลองดูหน้าตาด้วยข้อมูลจำลอง: `python -m solar_relay.web.server` แล้วเปิด http://127.0.0.1:8080/
+
+หน้าเว็บอัปเดตเองทุก 10 วินาที ข้อมูลอยู่ในหน่วยความจำของ relay (ประวัติ alarm 2000 รายการล่าสุด) งานย้อนหลังยาว ๆ ใช้ Grafana
+
 ## ทดสอบกับ inverter จริงที่หน้างาน
 
 ```bash

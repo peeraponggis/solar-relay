@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar Relay</title>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;--pv:#d97706;--load:#2563eb;--grid:#dc2626;--batt:#16a34a;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--brand:#0f766e}
+*{box-sizing:border-box}body{margin:0;font-family:"Segoe UI",Tahoma,"Noto Sans Thai",sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
+header{background:var(--brand);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0}header nav a{color:#d1fae5;text-decoration:none;margin-right:14px;padding:6px 0;border-bottom:2px solid transparent}
+header nav a.active{color:#fff;border-color:#fff}header .st{margin-left:auto;font-size:13px;color:#d1fae5}
+main{padding:16px;max-width:1400px;margin:0 auto}
+.grid{display:grid;gap:12px}.g4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi .v{font-size:26px;font-weight:600}.kpi .l{color:var(--muted);font-size:13px}
+.kpi.pv .v{color:var(--pv)}.kpi.load .v{color:var(--load)}.kpi.grid .v{color:var(--grid)}.kpi.batt .v{color:var(--batt)}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.b-ok{background:#dcfce7;color:#166534}.b-warn{background:#fef3c7;color:#92400e}.b-bad{background:#fee2e2;color:#991b1b}.b-muted{background:#e5e7eb;color:#374151}.b-info{background:#dbeafe;color:#1e40af}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:13px}
+tr.click{cursor:pointer}tr.click:hover{background:#f9fafb}
+h2{font-size:17px;margin:18px 0 8px}h3{font-size:15px;margin:10px 0 6px}
+.muted{color:var(--muted)}.small{font-size:13px}.num{text-align:right;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit}button{background:var(--brand);color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer}button.sec{background:#e5e7eb;color:#111}
+input,select{border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px}
+.alarm{border-left:4px solid var(--bad);padding:8px 10px;margin:8px 0;background:#fff;border-radius:6px;border:1px solid var(--line);border-left-width:4px}
+.alarm.warning{border-left-color:var(--warn)}.alarm.info{border-left-color:#3b82f6}.alarm.acked{opacity:.7}
+.alarm .adv{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 8px;margin-top:6px;white-space:pre-wrap}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+pre{background:#0f172a;color:#e2e8f0;padding:10px;border-radius:8px;overflow:auto;font-size:12.5px;max-height:480px}
+.site{cursor:pointer}.site:hover{border-color:var(--brand)}
+.flow{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0}.flow div{min-width:110px}.flow b{display:block;font-size:20px}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+@media (max-width:600px){header nav a{margin-right:8px;font-size:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>☀️ Solar Relay</h1>
+  <nav>
+    <a href="#overview" data-v="overview">ภาพรวม</a>
+    <a href="#sites" data-v="sites">ไซต์/ลูกค้า</a>
+    <a href="#service" data-v="service">ทีมบริการ</a>
+    <a href="#devices" data-v="devices">อุปกรณ์</a>
+    <a href="#probe" data-v="probe">ตรวจสอบ inverter</a>
+  </nav>
+  <span class="st" id="status">กำลังโหลด…</span>
+</header>
+<main id="main"></main>
+<script>
+const $=s=>document.querySelector(s);let S=null,view='overview',param=null,timer=null;
+const fmtW=v=>v==null?'–':(Math.abs(v)>=10000?(v/1000).toFixed(1)+' kW':Math.round(v)+' W');
+const fmtK=v=>v==null?'–':(+v).toFixed(1)+' kWh';const fmtP=v=>v==null?'–':(+v).toFixed(0)+' %';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const t=iso=>iso?new Date(iso).toLocaleString('th-TH',{hour12:false}):'–';
+const age=s=>s==null?'ไม่มีข้อมูล':s<90?s+' วิ':s<5400?Math.round(s/60)+' นาที':Math.round(s/3600)+' ชม.';
+const sev=s=>({fault:'<span class="badge b-bad">ผิดพลาด</span>',warning:'<span class="badge b-warn">เตือน</span>',info:'<span class="badge b-info">ข้อมูล</span>'}[s]||'');
+const gridTxt=v=>v==null?'–':(v>=0?'ซื้อ ':'ขาย ')+fmtW(Math.abs(v));const battTxt=v=>v==null?'–':(v>=0?'ชาร์จ ':'คาย ')+fmtW(Math.abs(v));
+function statusBadge(d){if(!d.has_data)return '<span class="badge b-muted">รอข้อมูล</span>';if(!d.online)return '<span class="badge b-bad">ออฟไลน์</span>';
+ if(d.alarms.some(a=>a.severity==='fault'))return '<span class="badge b-bad">ผิดพลาด</span>';if(d.alarm_count)return '<span class="badge b-warn">มีแจ้งเตือน</span>';return '<span class="badge b-ok">ปกติ</span>'}
+
+function kpis(x){return `<div class="grid g4">
+ <div class="card kpi pv"><div class="l">ผลิตจากแผง (PV)</div><div class="v">${fmtW(x.pv_w)}</div></div>
+ <div class="card kpi load"><div class="l">โหลด</div><div class="v">${fmtW(x.load_w)}</div></div>
+ <div class="card kpi grid"><div class="l">กริด (+ซื้อ / −ขาย)</div><div class="v">${gridTxt(x.grid_w)}</div></div>
+ <div class="card kpi batt"><div class="l">แบตเตอรี่ (+ชาร์จ / −คาย)</div><div class="v">${battTxt(x.batt_w)}</div></div>
+ <div class="card kpi"><div class="l">พลังงานวันนี้</div><div class="v">${fmtK(x.energy_day_kwh)}</div></div>
+ ${x.soc_avg!=null?`<div class="card kpi"><div class="l">SOC เฉลี่ย</div><div class="v">${fmtP(x.soc_avg)}</div></div>`:''}
+</div>`}
+
+function vOverview(){const T=S.totals;return `
+ <div class="grid g4" style="margin-bottom:12px">
+  <div class="card kpi"><div class="l">ไซต์</div><div class="v">${T.sites}</div></div>
+  <div class="card kpi"><div class="l">อุปกรณ์ออนไลน์</div><div class="v" style="color:${T.offline?'var(--bad)':'var(--ok)'}">${T.online}/${T.devices}</div></div>
+  <div class="card kpi"><div class="l">แจ้งเตือนค้าง</div><div class="v" style="color:${T.alarms?'var(--bad)':'var(--ok)'}">${T.alarms}</div><div class="l">ผิดพลาด ${T.faults} · ยังไม่รับทราบ ${T.unacked}</div></div>
+ </div>
+ ${kpis(T)}
+ <h2>ไซต์ทั้งหมด</h2>
+ <div class="grid g2">${S.sites.map(s=>`<div class="card site" onclick="go('site','${esc(s.id)}')">
+   <div class="row"><b>${esc(s.name)}</b> ${s.offline?`<span class="badge b-bad">ออฟไลน์ ${s.offline}</span>`:''} ${s.alarms?`<span class="badge ${s.faults?'b-bad':'b-warn'}">แจ้งเตือน ${s.alarms}</span>`:'<span class="badge b-ok">ปกติ</span>'}</div>
+   <div class="small muted">${esc(s.customer)} ${s.phone?'· '+esc(s.phone):''} · อุปกรณ์ ${s.device_count}</div>
+   <div class="flow"><div><span class="small muted">PV</span><b style="color:var(--pv)">${fmtW(s.pv_w)}</b></div><div><span class="small muted">โหลด</span><b style="color:var(--load)">${fmtW(s.load_w)}</b></div>
+   <div><span class="small muted">กริด</span><b style="color:var(--grid)">${gridTxt(s.grid_w)}</b></div><div><span class="small muted">แบต</span><b style="color:var(--batt)">${battTxt(s.batt_w)}</b></div>
+   <div><span class="small muted">วันนี้</span><b>${fmtK(s.energy_day_kwh)}</b></div>${s.soc_avg!=null?`<div><span class="small muted">SOC</span><b>${fmtP(s.soc_avg)}</b></div>`:''}</div>
+  </div>`).join('')||'<div class="empty">ยังไม่มีไซต์ เพิ่ม sites: ใน config.yaml</div>'}</div>`}
+
+function vSites(){return `<h2>รายชื่อลูกค้า / ไซต์</h2><div class="card"><table><thead><tr><th>ไซต์</th><th>ลูกค้า</th><th>โทร</th><th>ที่อยู่</th><th class="num">อุปกรณ์</th><th>สถานะ</th><th class="num">PV</th><th class="num">วันนี้</th></tr></thead><tbody>
+ ${S.sites.map(s=>`<tr class="click" onclick="go('site','${esc(s.id)}')"><td><b>${esc(s.name)}</b><div class="small muted">${esc(s.id)}</div></td><td>${esc(s.customer)}</td><td>${s.phone?`<a href="tel:${esc(s.phone)}">${esc(s.phone)}</a>`:''}</td><td class="small">${esc(s.address)}</td>
+ <td class="num">${s.online}/${s.device_count}</td><td>${s.offline?`<span class="badge b-bad">ออฟไลน์ ${s.offline}</span> `:''}${s.alarms?`<span class="badge ${s.faults?'b-bad':'b-warn'}">แจ้งเตือน ${s.alarms}</span>`:(s.offline?'':'<span class="badge b-ok">ปกติ</span>')}</td>
+ <td class="num">${fmtW(s.pv_w)}</td><td class="num">${fmtK(s.energy_day_kwh)}</td></tr>`).join('')}</tbody></table></div>`}
+
+function devTable(devs){return `<table><thead><tr><th>อุปกรณ์</th><th>ยี่ห้อ</th><th>สถานะ</th><th class="num">PV</th><th class="num">AC</th><th class="num">โหลด</th><th class="num">กริด</th><th class="num">แบต</th><th class="num">SOC</th><th class="num">วันนี้</th><th>อัปเดต</th></tr></thead><tbody>
+ ${devs.map(d=>`<tr class="click" onclick="go('device','${esc(d.device_id)}')"><td><b>${esc(d.device_id)}</b><div class="small muted">${esc(d.status||'')}</div></td><td>${esc(d.brand||'')}<div class="small muted">${esc(d.adapter||d.source||'')}</div></td><td>${statusBadge(d)}</td>
+ <td class="num">${fmtW(d.pv_w)}</td><td class="num">${fmtW(d.ac_w)}</td><td class="num">${fmtW(d.load_w)}</td><td class="num">${gridTxt(d.grid_w)}</td><td class="num">${battTxt(d.batt_w)}</td><td class="num">${fmtP(d.soc)}</td><td class="num">${fmtK(d.energy_day_kwh)}</td><td class="small">${age(d.age_s)}</td></tr>`).join('')}</tbody></table>`}
+
+function vSite(id){const s=S.sites.find(x=>x.id===id);if(!s)return '<div class="empty">ไม่พบไซต์</div>';const al=S.active_alarms.filter(a=>a.site_id===id);
+ return `<div class="row"><button class="sec" onclick="go('sites')">← ไซต์ทั้งหมด</button><h2 style="margin:0">${esc(s.name)}</h2></div>
+ <div class="card small" style="margin:10px 0">ลูกค้า <b>${esc(s.customer)||'–'}</b> · โทร ${s.phone?`<a href="tel:${esc(s.phone)}">${esc(s.phone)}</a>`:'–'} · ${esc(s.address)||''} ${s.note?'<br>หมายเหตุ: '+esc(s.note):''}</div>
+ ${kpis(s)}<h2>อุปกรณ์ในไซต์</h2><div class="card">${devTable(s.devices)}</div>
+ <h2>แจ้งเตือนค้าง (${al.length})</h2>${al.length?al.map(alarmCard).join(''):'<div class="card empty">ไม่มี</div>'}`}
+
+function vDevices(){const devs=S.sites.flatMap(s=>s.devices.map(d=>({...d,site_name:s.name})));return `<h2>อุปกรณ์ทั้งหมด (${devs.length})</h2><div class="card">${devTable(devs)}</div>`}
+
+function vDevice(id){let d=null;for(const s of S.sites){d=s.devices.find(x=>x.device_id===id);if(d)break}if(!d)return '<div class="empty">ไม่พบอุปกรณ์</div>';
+ const rows=[['สถานะ',esc(d.status||'–')],['ออนไลน์',d.online?'ใช่':'ไม่'],['อัปเดตล่าสุด',t(d.ts)+' ('+age(d.age_s)+')'],['PV',fmtW(d.pv_w)],['AC',fmtW(d.ac_w)],['โหลด',fmtW(d.load_w)],['กริด',gridTxt(d.grid_w)],['แบตเตอรี่',battTxt(d.batt_w)],['SOC / SOH',fmtP(d.soc)+' / '+fmtP(d.soh)],['แรงดัน/กระแสแบต',(d.batt_v??'–')+' V / '+(d.batt_a??'–')+' A'],
+  ['แรงดัน/ความถี่กริด',(d.grid_v??'–')+' V / '+(d.grid_hz??'–')+' Hz'],['อุณหภูมิ',(d.temp_c??'–')+' °C (แบต '+(d.batt_temp_c??'–')+' °C)'],['พลังงานวันนี้ / รวม',fmtK(d.energy_day_kwh)+' / '+fmtK(d.energy_total_kwh)],
+  ['ซื้อ / ขาย วันนี้',fmtK(d.grid_import_day_kwh)+' / '+fmtK(d.grid_export_day_kwh)],['ชาร์จ / คาย วันนี้',fmtK(d.batt_charge_day_kwh)+' / '+fmtK(d.batt_discharge_day_kwh)],['โหลดวันนี้',fmtK(d.load_day_kwh)]];
+ const strings=Object.entries(d.strings||{});
+ return `<div class="row"><button class="sec" onclick="go('site','${esc(d.site_id)}')">← ${esc(d.site_name)}</button><h2 style="margin:0">${esc(d.device_id)} ${statusBadge(d)}</h2><span class="muted small">${esc(d.brand||'')} · ${esc(d.adapter||d.source||'')}</span></div>
+ <div class="grid g2" style="margin-top:10px"><div class="card"><table>${rows.map(r=>`<tr><th>${r[0]}</th><td>${r[1]}</td></tr>`).join('')}</table></div>
+ <div><div class="card"><h3>String (แผง)</h3>${strings.length?`<table><tr><th>string</th><th class="num">V</th><th class="num">A</th><th class="num">W</th></tr>${strings.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.v??'–'}</td><td class="num">${v.a??'–'}</td><td class="num">${v.w??'–'}</td></tr>`).join('')}</table>`:'<div class="muted small">ไม่มีข้อมูลราย string</div>'}</div>
+ <div class="card" style="margin-top:12px"><h3>ข้อมูลเพิ่มเติม</h3><pre style="max-height:220px">${esc(JSON.stringify(d.extra||{},null,1))}</pre></div></div></div>
+ <h2>แจ้งเตือนค้าง (${d.alarms.length})</h2>${d.alarms.length?d.alarms.map(a=>alarmCard({...a,site_name:d.site_name})).join(''):'<div class="card empty">ไม่มี</div>'}`}
+
+function alarmCard(a){return `<div class="alarm ${a.severity} ${a.acked?'acked':''}">
+ <div class="row">${sev(a.severity)} <b>${esc(a.code)}</b> <span>${esc(a.message||a.catalog_name||'')}</span> ${a.category?`<span class="badge b-muted">${esc(a.category)}</span>`:''} ${a.acked?'<span class="badge b-info">รับทราบแล้ว</span>':''}</div>
+ <div class="small muted">ไซต์ <b>${esc(a.site_name||'')}</b> ${a.customer?'· '+esc(a.customer):''} ${a.phone?`· <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a>`:''} · อุปกรณ์ <a href="#" onclick="go('device','${esc(a.device_id)}');return false">${esc(a.device_id)}</a> · เริ่ม ${t(a.raised_at||a.first_seen)} · ล่าสุด ${t(a.last_seen)}${a.acked?' · รับทราบโดย '+esc(a.acked_by||'-')+(a.ack_note?' ('+esc(a.ack_note)+')':''):''}</div>
+ ${a.raw&&a.raw.cause?`<div class="small" style="margin-top:4px">สาเหตุที่พบบ่อย: ${esc(a.raw.cause)}</div>`:''}
+ ${a.advice?`<div class="adv small"><b>วิธีตรวจแก้:</b> ${esc(a.advice)}</div>`:''}
+ ${!a.acked?`<div class="row" style="margin-top:6px"><input id="n-${esc(a.device_id)}-${esc(a.code)}" placeholder="บันทึก/ชื่อช่าง" style="min-width:220px"><button onclick="ack('${esc(a.device_id)}','${esc(a.code)}')">รับทราบ</button></div>`:''}</div>`}
+
+function vService(){const A=S.active_alarms;const off=S.sites.flatMap(s=>s.devices.filter(d=>!d.online).map(d=>({...d,site:s})));
+ const f=param||'all';const list=A.filter(a=>f==='all'||(f==='unacked'?!a.acked:a.severity===f));
+ return `<h2>ทีมบริการ · งานที่ต้องทำ</h2>
+ <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="l">แจ้งเตือนค้าง</div><div class="v" style="color:${A.length?'var(--bad)':'var(--ok)'}">${A.length}</div></div>
+ <div class="card kpi"><div class="l">ผิดพลาด (ต้องออกหน้างาน)</div><div class="v" style="color:${S.totals.faults?'var(--bad)':'var(--ok)'}">${S.totals.faults}</div></div>
+ <div class="card kpi"><div class="l">อุปกรณ์ออฟไลน์</div><div class="v" style="color:${off.length?'var(--bad)':'var(--ok)'}">${off.length}</div></div>
+ <div class="card kpi"><div class="l">ยังไม่รับทราบ</div><div class="v">${S.totals.unacked}</div></div></div>
+ ${off.length?`<h3>อุปกรณ์ออฟไลน์</h3><div class="card"><table><tr><th>อุปกรณ์</th><th>ไซต์</th><th>ลูกค้า</th><th>โทร</th><th>ข้อมูลล่าสุด</th><th>สถานะ</th></tr>${off.map(d=>`<tr class="click" onclick="go('device','${esc(d.device_id)}')"><td><b>${esc(d.device_id)}</b></td><td>${esc(d.site.name)}</td><td>${esc(d.site.customer)}</td><td>${esc(d.site.phone)}</td><td>${d.has_data?t(d.ts):'ยังไม่เคยได้ข้อมูล'}</td><td class="small">${esc(d.status||'')}</td></tr>`).join('')}</table>
+ <div class="small muted" style="margin-top:6px">เช็ก: ไฟเลี้ยง datalogger, Wi-Fi/LAN, static IP, Modbus TCP ยังเปิดอยู่หลังอัปเดต firmware หรือไม่</div></div>`:''}
+ <h3>แจ้งเตือนค้าง</h3><div class="row" style="margin-bottom:8px">${[['all','ทั้งหมด'],['fault','ผิดพลาด'],['warning','เตือน'],['unacked','ยังไม่รับทราบ']].map(([k,l])=>`<button class="${f===k?'':'sec'}" onclick="go('service','${k}')">${l}</button>`).join('')}
+ <a class="small" style="margin-left:auto" href="https://github.com/peeraponggis/solar-relay/blob/main/docs/ALARM_CODES.md" target="_blank">ตารางรหัสทุกยี่ห้อ</a> · <a class="small" href="https://github.com/peeraponggis/solar-relay/blob/main/docs/SITE_TEST.md" target="_blank">คู่มือหน้างาน</a></div>
+ ${list.length?list.map(alarmCard).join(''):'<div class="card empty">ไม่มีแจ้งเตือนค้าง 🎉</div>'}
+ <h3>ประวัติล่าสุด</h3><div class="card"><table><tr><th>เวลา</th><th>เหตุการณ์</th><th>อุปกรณ์</th><th>ไซต์</th><th>รหัส</th><th>รายละเอียด</th></tr>
+ ${S.history.slice(0,100).map(h=>`<tr><td class="small">${t(h.at)}</td><td>${({raised:'<span class="badge b-bad">เกิด</span>',recovered:'<span class="badge b-ok">หาย</span>',acked:'<span class="badge b-info">รับทราบ</span>'})[h.event]||h.event}</td><td>${esc(h.device_id)}</td><td>${esc(h.site_name||'')}</td><td><b>${esc(h.code)}</b></td><td class="small">${esc(h.message||'')} ${h.ack_note?'· '+esc(h.ack_note):''}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">ยังไม่มี</td></tr>'}</table></div>`}
+
+function vProbe(){return `<h2>ตรวจสอบ inverter จาก browser</h2><div class="card">
+ <div class="row"><label>IP <input id="p-host" placeholder="192.168.1.30"></label><label>Solarman serial <input id="p-serial" placeholder="27xxxxxxxx (ถ้ามี stick)"></label>
+ <label>RS485 port <input id="p-rtu" placeholder="COM3 หรือ /dev/ttyUSB0"></label><label>baud <input id="p-baud" value="9600" size="6"></label>
+ <label>maps <input id="p-maps" placeholder="huawei,solis (ว่าง = ทั้งหมด)"></label><label>units <input id="p-units" placeholder="1,2,3,247"></label>
+ <button id="p-run" onclick="probe()">สแกน</button></div>
+ <div class="small muted" style="margin-top:6px">สแกน port 502/1502/6607/8899, SunSpec และทุก brand map ใช้เวลา 10-60 วินาที ผลจะเสนอ config ให้คัดลอกลง config.yaml</div>
+ <pre id="p-out" style="margin-top:10px">ยังไม่ได้สแกน</pre></div>`}
+
+async function probe(){const b=$('#p-run');b.disabled=true;$('#p-out').textContent='กำลังสแกน…';
+ const body={host:$('#p-host').value.trim(),serial:$('#p-serial').value.trim()||null,rtu:$('#p-rtu').value.trim()||null,baud:+$('#p-baud').value||9600,maps:$('#p-maps').value.trim()||null,units:$('#p-units').value.trim()||null};
+ try{const r=await fetch('/api/probe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json();$('#p-out').textContent=j.output||j.detail||JSON.stringify(j)}catch(e){$('#p-out').textContent='ผิดพลาด: '+e}b.disabled=false}
+async function ack(dev,code){const n=document.getElementById(`n-${dev}-${code}`);const note=n?n.value:'';
+ await fetch('/api/alarms/ack',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({device_id:dev,code,note,by:note})});await load()}
+
+function go(v,p){view=v;param=p||null;location.hash='#'+v+(p?'/'+encodeURIComponent(p):'');render()}
+function render(){if(!S){$('#main').innerHTML='<div class="empty">กำลังโหลด…</div>';return}
+ document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===view||(view==='site'&&a.dataset.v==='sites')||(view==='device'&&a.dataset.v==='devices')));
+ const f={overview:vOverview,sites:vSites,site:()=>vSite(param),service:vService,devices:vDevices,device:()=>vDevice(param),probe:vProbe}[view]||vOverview;
+ if(view==='probe'&&$('#p-out'))return;$('#main').innerHTML=f()}
+async function load(){try{const r=await fetch('/api/state');S=await r.json();$('#status').textContent='อัปเดต '+new Date(S.now).toLocaleTimeString('th-TH')+' · อุปกรณ์ '+S.totals.online+'/'+S.totals.devices+' ออนไลน์'+(S.totals.alarms?' · ⚠ '+S.totals.alarms:'');render()}catch(e){$('#status').textContent='ต่อ relay ไม่ได้: '+e}}
+function fromHash(){const h=location.hash.slice(1).split('/');view=h[0]||'overview';param=h[1]?decodeURIComponent(h[1]):null;render()}
+window.addEventListener('hashchange',fromHash);fromHash();load();timer=setInterval(load,10000);
+</script>
+</body>
+</html>

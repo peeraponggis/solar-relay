@@ -62,11 +62,31 @@ class OutputConfig:
 
 
 @dataclass
+class SiteConfig:
+    """Customer / site grouping used by the built-in web UI."""
+
+    id: str
+    name: str = ""
+    customer: str = ""
+    phone: str = ""
+    address: str = ""
+    note: str = ""
+    devices: list[str] = field(default_factory=list)
+
+
+@dataclass
 class RelayConfig:
     poll_interval_s: int = 30
     log_level: str = "INFO"
     devices: list[DeviceConfig] = field(default_factory=list)
     outputs: list[OutputConfig] = field(default_factory=list)
+    sites: list[SiteConfig] = field(default_factory=list)
+
+    def site_of(self, device_id: str) -> SiteConfig | None:
+        for s in self.sites:
+            if device_id in s.devices:
+                return s
+        return None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> RelayConfig:
@@ -95,11 +115,34 @@ class RelayConfig:
         dupes = {i for i in ids if ids.count(i) > 1}
         if dupes:
             raise ValueError(f"duplicate device ids in config: {sorted(dupes)}")
+        sites = [
+            SiteConfig(
+                id=str(s["id"]),
+                name=str(s.get("name", s["id"])),
+                customer=str(s.get("customer", "")),
+                phone=str(s.get("phone", "")),
+                address=str(s.get("address", "")),
+                note=str(s.get("note", "")),
+                devices=[str(x) for x in (s.get("devices", []) or [])],
+            )
+            for s in raw.get("sites", []) or []
+        ]
+        # devices may also point at their site with `site: <id>`
+        for d in raw.get("devices", []) or []:
+            sid = d.get("site")
+            if sid:
+                site = next((s for s in sites if s.id == str(sid)), None)
+                if site is None:
+                    site = SiteConfig(id=str(sid), name=str(sid))
+                    sites.append(site)
+                if str(d["id"]) not in site.devices:
+                    site.devices.append(str(d["id"]))
         return cls(
             poll_interval_s=int(relay.get("poll_interval_s", 30)),
             log_level=str(relay.get("log_level", "INFO")),
             devices=devices,
             outputs=outputs,
+            sites=sites,
         )
 
     @classmethod

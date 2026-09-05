@@ -20,6 +20,7 @@ COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels
 USER relay
 VOLUME ["/config"]
+EXPOSE 8080
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
   CMD python -c "import solar_relay, sys; sys.exit(0)"
 ENTRYPOINT ["solar-relay", "--config", "/config/config.yaml"]

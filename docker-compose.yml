@@ -5,6 +5,7 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    ports: ["8080:8080"]            # built-in web UI
     volumes:
       - ./config:/config:ro
       # - /dev/ttyUSB0:/dev/ttyUSB0   # RS485 direct (Solis) - also add: devices: ["/dev/ttyUSB0"]

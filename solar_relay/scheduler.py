@@ -35,7 +35,10 @@ class Relay:
             if not o.enabled:
                 continue
             cls = get_output_class(o.type)
-            self.outputs.append(cls(**o.options))
+            out = cls(**o.options)
+            if hasattr(out, "attach"):      # outputs that need the whole config (web UI: sites, devices)
+                out.attach(self.cfg)
+            self.outputs.append(out)
         if not self.adapters:
             raise RuntimeError("no enabled devices in config")
         if not self.outputs:

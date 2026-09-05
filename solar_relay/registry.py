@@ -34,6 +34,7 @@ OUTPUTS: dict[str, str] = {
     "homeassistant": "solar_relay.outputs.homeassistant:HomeAssistantOutput",
     "pvoutput":      "solar_relay.outputs.pvoutput:PVOutputOutput",
     "console":       "solar_relay.outputs.console:ConsoleOutput",
+    "web":           "solar_relay.web.server:WebOutput",          # built-in Thai web UI + JSON API
 }
 
 
