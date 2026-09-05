@@ -61,7 +61,7 @@ class GoodWeSemsAdapter(CloudAdapter):
                                  {"powerStationId": self.ps_id}, headers={"Token": self._token})
         if str(j.get("code")) not in ("0", "200"):
             self._token = None
-            raise IOError(f"SEMS: {j.get('msg')}")
+            raise OSError(f"SEMS: {j.get('msg')}")
         d = j["data"]
         r = self.new_reading()
         flow = d.get("powerflow") or {}

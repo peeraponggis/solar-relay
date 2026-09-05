@@ -10,7 +10,7 @@ Energies are kWh, temperatures degC, SOC in percent 0-100.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -96,7 +96,7 @@ class Reading:
                     out[f"{sname}_{k}"] = float(v)
         return out
 
-    def derive_missing(self) -> "Reading":
+    def derive_missing(self) -> Reading:
         """Fill load or grid from the power balance when the vendor omits one of them.
 
         Balance used:  load = pv + grid_import - batt_charge  (W, relay sign convention)

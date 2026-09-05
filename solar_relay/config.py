@@ -69,7 +69,7 @@ class RelayConfig:
     outputs: list[OutputConfig] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "RelayConfig":
+    def from_dict(cls, raw: dict[str, Any]) -> RelayConfig:
         raw = expand_env(raw or {})
         relay = raw.get("relay", {}) or {}
         devices = [
@@ -103,6 +103,6 @@ class RelayConfig:
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> "RelayConfig":
-        with open(path, "r", encoding="utf-8") as fh:
+    def load(cls, path: str | Path) -> RelayConfig:
+        with open(path, encoding="utf-8") as fh:
             return cls.from_dict(yaml.safe_load(fh) or {})

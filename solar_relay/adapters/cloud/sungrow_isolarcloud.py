@@ -83,7 +83,7 @@ class SungrowISolarCloudAdapter(CloudAdapter):
                 self._token = None
                 await self._login()
                 return await self._call(path, body)
-            raise IOError(f"iSolarCloud {path}: {j.get('result_msg')} ({j.get('result_code')})")
+            raise OSError(f"iSolarCloud {path}: {j.get('result_msg')} ({j.get('result_code')})")
         return j.get("result_data")
 
     async def _login(self) -> None:

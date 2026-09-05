@@ -1,0 +1,15 @@
+target-version = "py311"
+line-length = 140
+extend-exclude = ["docs", "grafana/provisioning"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B007", "B008", "B905", "UP007", "UP017", "UP035", "UP045"]
+
+[lint.per-file-ignores]
+"tests/*" = ["E402"]
+"grafana/build_dashboard.py" = ["E402"]
+"homeassistant/build_dashboard.py" = ["E402"]
+
+[lint.isort]
+known-first-party = ["solar_relay"]

@@ -1,5 +1,9 @@
 # solar-relay
 
+[![CI](https://github.com/peeraponggis/solar-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/peeraponggis/solar-relay/actions/workflows/ci.yml)
+[![Docker image](https://github.com/peeraponggis/solar-relay/actions/workflows/docker.yml/badge.svg)](https://github.com/peeraponggis/solar-relay/actions/workflows/docker.yml)
+![ghcr](https://img.shields.io/badge/ghcr.io-peeraponggis%2Fsolar--relay-blue)
+
 Relay กลางสำหรับ inverter / hybrid inverter หลายยี่ห้อ อ่านข้อมูลจากอุปกรณ์ (local) หรือ cloud ของผู้ผลิต
 แปลงเป็น schema เดียว แล้วส่งต่อไป InfluxDB, MQTT, Home Assistant (auto-discovery) และ PVOutput
 
@@ -42,8 +46,22 @@ Docker (relay + InfluxDB + Mosquitto + Grafana):
 
 ```bash
 mkdir config && cp config.example.yaml config/config.yaml && cp .env.example .env
-docker compose up -d --build
+docker compose up -d            # ดึง image สำเร็จรูปจาก GHCR (amd64 + arm64 / Raspberry Pi)
+docker compose up -d --build    # หรือ build เองจากซอร์ส
 ```
+
+Image เดี่ยว: `ghcr.io/peeraponggis/solar-relay:latest` (tag `sha-xxxxxxx` ทุก commit บน main และ `1.2.3` เมื่อ push tag `v1.2.3`)
+รันเป็น user ไม่ใช่ root อยู่ในกลุ่ม dialout ต่อ RS485 USB ได้ด้วย `--device /dev/ttyUSB0`
+
+```bash
+docker run -d --name solar-relay -v $PWD/config:/config:ro --env-file .env ghcr.io/peeraponggis/solar-relay:latest
+```
+
+## CI / CD
+
+- `.github/workflows/ci.yml` รัน ruff + pytest บน Python 3.11-3.13 ตรวจว่า dashboard/docs ที่ generate ตรงกับสคริปต์ และ smoke test CLI ทุก push/PR
+- `.github/workflows/docker.yml` build image multi-arch ด้วย buildx แล้ว push ไป GHCR เมื่อ push main หรือ tag `v*` (PR แค่ build ไม่ push) พร้อม smoke test `--list-adapters`
+- ออก release: `git tag v0.1.0 && git push --tags`
 
 ## Grafana dashboard
 

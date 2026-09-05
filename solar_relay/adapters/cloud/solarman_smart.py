@@ -53,7 +53,7 @@ class SolarmanSmartAdapter(CloudAdapter):
             if str(j.get("code")) in ("2101001", "401"):
                 await self._login()
                 return await self._call(path, body)
-            raise IOError(f"Solarman {path}: {j.get('msg')} (code {j.get('code')})")
+            raise OSError(f"Solarman {path}: {j.get('msg')} (code {j.get('code')})")
         return j
 
     async def start(self) -> None:

@@ -23,6 +23,7 @@ from typing import Callable
 
 from ..schema import Alarm, Reading
 
+
 # ---------------------------------------------------------------------------
 # decoding primitives (no pymodbus dependency -> unit-testable)
 # ---------------------------------------------------------------------------

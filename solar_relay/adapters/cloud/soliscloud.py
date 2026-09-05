@@ -56,7 +56,7 @@ class SolisCloudAdapter(CloudAdapter):
         resp.raise_for_status()
         j = resp.json()
         if not j.get("success", False) or str(j.get("code")) != "0":
-            raise IOError(f"SolisCloud {path}: {j.get('msg')} (code {j.get('code')})")
+            raise OSError(f"SolisCloud {path}: {j.get('msg')} (code {j.get('code')})")
         return j.get("data")
 
     async def start(self) -> None:

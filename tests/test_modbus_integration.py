@@ -10,9 +10,9 @@ from pymodbus.datastore import ModbusSequentialDataBlock, ModbusServerContext  #
 from pymodbus.server import ModbusTcpServer  # noqa: E402
 
 try:
-    from pymodbus.datastore import ModbusDeviceContext as _DevCtx   # pymodbus >= 3.10
+    from pymodbus.datastore import ModbusDeviceContext as _DevCtx  # pymodbus >= 3.10
 except ImportError:  # pragma: no cover
-    from pymodbus.datastore import ModbusSlaveContext as _DevCtx    # pymodbus 3.7 - 3.9
+    from pymodbus.datastore import ModbusSlaveContext as _DevCtx  # pymodbus 3.7 - 3.9
 
 from solar_relay.adapters.modbus_generic import ModbusMapAdapter  # noqa: E402
 from solar_relay.adapters.modbus_maps import HUAWEI, SOLIS  # noqa: E402

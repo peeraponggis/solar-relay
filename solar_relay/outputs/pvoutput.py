@@ -64,5 +64,5 @@ class PVOutputOutput(BaseOutput):
             return
         resp = await self._http.post(self.URL, data=p, headers={"X-Pvoutput-Apikey": self.api_key, "X-Pvoutput-SystemId": sid})
         if resp.status_code != 200:
-            raise IOError(f"PVOutput {resp.status_code}: {resp.text[:120]}")
+            raise OSError(f"PVOutput {resp.status_code}: {resp.text[:120]}")
         self._last[reading.device_id] = now

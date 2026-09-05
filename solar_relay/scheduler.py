@@ -24,7 +24,7 @@ class Relay:
         self._stop = asyncio.Event()
 
     # ---- construction ---------------------------------------------------
-    def build(self) -> "Relay":
+    def build(self) -> Relay:
         for d in self.cfg.devices:
             if not d.enabled:
                 continue

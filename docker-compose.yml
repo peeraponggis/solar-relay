@@ -1,5 +1,7 @@
 services:
   relay:
+    # pulls the published image; `docker compose up --build` builds locally instead
+    image: ghcr.io/peeraponggis/solar-relay:latest
     build: .
     restart: unless-stopped
     env_file: .env

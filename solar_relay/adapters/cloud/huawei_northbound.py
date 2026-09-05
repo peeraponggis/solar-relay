@@ -59,7 +59,7 @@ class HuaweiNorthboundAdapter(CloudAdapter):
             await self._login()
             j = await self.post_json(path, body, headers={"XSRF-TOKEN": self._token})
         if not j.get("success"):
-            raise IOError(f"Huawei {path}: {j.get('message')} (failCode {j.get('failCode')})")
+            raise OSError(f"Huawei {path}: {j.get('message')} (failCode {j.get('failCode')})")
         return j.get("data")
 
     async def start(self) -> None:

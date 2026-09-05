@@ -65,7 +65,7 @@ class ModbusMapAdapter(BaseAdapter):
         except TypeError:
             rr = await (c.read_input_registers if fc == 4 else c.read_holding_registers)(start, slave=self.unit, **kwargs)
         if rr.isError():
-            raise IOError(f"modbus fc{fc} @ {start} x{count}: {rr}")
+            raise OSError(f"modbus fc{fc} @ {start} x{count}: {rr}")
         return list(rr.registers)
 
     async def read(self) -> list[Reading]:

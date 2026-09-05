@@ -1,4 +1,3 @@
-import asyncio
 import json
 
 import pytest
@@ -62,7 +61,7 @@ class FakeAdapter(BaseAdapter):
     async def read(self):
         FakeAdapter.calls += 1
         if self.options.get("fail"):
-            raise IOError("boom")
+            raise OSError("boom")
         return [self.new_reading(pv_w=100, grid_w=-40)]
 
 

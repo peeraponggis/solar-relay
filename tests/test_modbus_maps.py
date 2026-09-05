@@ -1,6 +1,16 @@
 from solar_relay.adapters.modbus_maps import (
-    HUAWEI, MAPS, SOLIS, Reg, bit_alarms, decode, decode_block, finalize_deye, finalize_huawei,
-    finalize_solis, finalize_sungrow, plan_blocks,
+    HUAWEI,
+    MAPS,
+    SOLIS,
+    Reg,
+    bit_alarms,
+    decode,
+    decode_block,
+    finalize_deye,
+    finalize_huawei,
+    finalize_solis,
+    finalize_sungrow,
+    plan_blocks,
 )
 from solar_relay.schema import Reading
 
