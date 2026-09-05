@@ -1,0 +1,149 @@
+# solar-relay configuration.  "${VAR}" / "${VAR:default}" are read from the environment (.env via docker-compose).
+relay:
+  poll_interval_s: 30          # default for local adapters; clouds override to >= 300
+  log_level: INFO
+
+devices:
+  # ------------------------------------------------------------------ local: SunSpec (one adapter, many brands)
+  - id: solaredge-main
+    adapter: sunspec
+    brand: solaredge
+    options: {host: 192.168.1.20, port: 1502, unit: 1}         # SolarEdge: enable Modbus TCP in SetApp, port 1502
+  - id: fronius-gen24
+    adapter: sunspec
+    brand: fronius
+    options: {host: 192.168.1.21, unit: 1, extra_units: [240]}  # Fronius: SunSpec Modbus "int+SF", meter on unit 240
+  - id: sma-tripower
+    adapter: sunspec
+    brand: sma
+    options: {host: 192.168.1.22, unit: 3}                      # SMA: Modbus TCP on, SunSpec unit id 3
+  - id: delta-rpi
+    adapter: sunspec
+    brand: delta
+    options: {host: 192.168.1.23, unit: 1}
+  - id: solax-g4-sunspec
+    adapter: sunspec
+    brand: solax
+    enabled: false
+    options: {host: 192.168.1.24, unit: 1}
+
+  # ------------------------------------------------------------------ local: brand register maps (Modbus TCP / RTU)
+  - id: huawei-sun2000
+    adapter: modbus
+    brand: huawei
+    interval_s: 20
+    options: {map: huawei, host: 192.168.1.30, port: 502, unit: 1}        # SDongle: port 502 (or 6607 on old fw), unit 1
+  - id: solis-s6-hybrid
+    adapter: modbus
+    brand: solis
+    options: {map: solis, host: 192.168.1.31, port: 502, unit: 1, max_block: 60}   # DLS-L / S2-WL-ST logger
+  - id: solis-rs485-direct
+    adapter: modbus
+    brand: solis
+    enabled: false
+    options: {map: solis, serial: /dev/ttyUSB0, baudrate: 9600, unit: 1}          # USB-RS485 on the COM port
+  - id: sungrow-sh10rt
+    adapter: modbus
+    brand: sungrow
+    options: {map: sungrow, host: 192.168.1.32, port: 502, unit: 1}       # WiNet-S: enable Modbus TCP, white-list relay IP
+  - id: solax-x3-hybrid
+    adapter: modbus
+    brand: solax
+    options: {map: solax, host: 192.168.1.33, port: 502, unit: 1}         # Pocket LAN / WiFi 3.0
+  - id: deye-3p-tcp
+    adapter: modbus
+    brand: deye
+    enabled: false
+    options: {map: deye_3p, host: 192.168.1.34, port: 502, unit: 1}       # Deye with Modbus-TCP capable logger
+  - id: sigen-plant-local
+    adapter: modbus
+    brand: sigen
+    options: {map: sigen_local, host: 192.168.1.40, port: 502, unit: 247}  # installer must enable Modbus TCP, static IP
+
+  # ------------------------------------------------------------------ local: Solarman V5 loggers (Deye / Sofar / Solis DLS-W, DLS-L)
+  - id: deye-house
+    adapter: solarman
+    brand: deye
+    options: {map: deye_1p, host: 192.168.1.50, port: 8899, serial: 2712345678, unit: 1}
+  - id: sofar-hyd
+    adapter: solarman
+    brand: sofar
+    options: {map: sofar, host: 192.168.1.51, serial: 2798765432}
+  - id: solis-dlsw
+    adapter: solarman
+    brand: solis
+    options: {map: solis, host: 192.168.1.52, serial: 1712345678}
+
+  # ------------------------------------------------------------------ local: vendor JSON / UDP
+  - id: goodwe-et
+    adapter: goodwe
+    options: {host: 192.168.1.60, family: ET}
+  - id: fronius-local-json
+    adapter: fronius_solarapi
+    enabled: false
+    options: {host: 192.168.1.21}
+
+  # ------------------------------------------------------------------ Sigenergy official OpenAPI (push, vendor account)
+  - id: sigen-openapi
+    adapter: sigen_openapi
+    enabled: false
+    options:
+      host: "${SIGEN_MQTT_HOST}"
+      port: 8883
+      username: "${SIGEN_MQTT_USER}"
+      password: "${SIGEN_MQTT_PASS}"
+      telemetry_topic: "${SIGEN_TOPIC_TELEMETRY}"
+      system_topic: "${SIGEN_TOPIC_SYSTEM}"
+      alarm_topic: "${SIGEN_TOPIC_ALARM}"
+      system_ids: []
+
+  # ------------------------------------------------------------------ clouds (fallback, slow polling)
+  - id: huawei-cloud
+    adapter: cloud:huawei
+    enabled: false
+    interval_s: 300
+    options: {username: "${HUAWEI_NB_USER}", password: "${HUAWEI_NB_PASS}", base_url: https://sg5.fusionsolar.huawei.com}
+  - id: solis-cloud
+    adapter: cloud:soliscloud
+    enabled: false
+    options: {key_id: "${SOLIS_KEY_ID}", key_secret: "${SOLIS_KEY_SECRET}"}
+  - id: deye-cloud
+    adapter: cloud:solarman
+    enabled: false
+    options: {app_id: "${SOLARMAN_APP_ID}", app_secret: "${SOLARMAN_APP_SECRET}", email: "${SOLARMAN_EMAIL}", password: "${SOLARMAN_PASS}"}
+  - id: goodwe-sems
+    adapter: cloud:goodwe
+    enabled: false
+    options: {account: "${SEMS_USER}", password: "${SEMS_PASS}", power_station_id: "${SEMS_PS_ID}"}
+  - id: growatt-cloud
+    adapter: cloud:growatt
+    enabled: false
+    options: {username: "${GROWATT_USER}", password: "${GROWATT_PASS}"}
+  - id: sungrow-cloud
+    adapter: cloud:sungrow
+    enabled: false
+    options: {app_key: "${SG_APP_KEY}", access_key: "${SG_ACCESS_KEY}", username: "${SG_USER}", password: "${SG_PASS}", base_url: https://gateway.isolarcloud.com.hk}
+  - id: solaredge-cloud
+    adapter: cloud:solaredge
+    enabled: false
+    interval_s: 600
+    options: {api_key: "${SE_API_KEY}", site_id: "${SE_SITE_ID}"}
+  - id: fronius-cloud
+    adapter: cloud:fronius
+    enabled: false
+    options: {access_key_id: "${FRONIUS_KEY_ID}", access_key_value: "${FRONIUS_KEY_VALUE}", pv_system_id: "${FRONIUS_SYSTEM_ID}"}
+  - id: sma-cloud
+    adapter: cloud:sma
+    enabled: false
+    options: {username: "${SMA_USER}", password: "${SMA_PASS}"}
+
+outputs:
+  - type: influxdb
+    options: {url: "${INFLUX_URL:http://influxdb:8086}", token: "${INFLUX_TOKEN}", org: "${INFLUX_ORG:solar}", bucket: "${INFLUX_BUCKET:solar}"}
+  - type: homeassistant            # MQTT + HA discovery (use type: mqtt for plain MQTT)
+    options: {host: "${MQTT_HOST:mosquitto}", port: 1883, username: "${MQTT_USER:}", password: "${MQTT_PASS:}", prefix: solar}
+  - type: pvoutput
+    enabled: false
+    options:
+      api_key: "${PVOUTPUT_KEY}"
+      systems: {huawei-sun2000: 12345, solis-s6-hybrid: 23456}

@@ -1,0 +1,45 @@
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config:/config:ro
+      # - /dev/ttyUSB0:/dev/ttyUSB0   # RS485 direct (Solis) - also add: devices: ["/dev/ttyUSB0"]
+    depends_on: [influxdb, mosquitto]
+
+  influxdb:
+    image: influxdb:2.7
+    restart: unless-stopped
+    ports: ["8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_ADMIN_PASS:-changeme123}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-solar}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-solar}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN}
+    volumes: [influx-data:/var/lib/influxdb2]
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports: ["1883:1883"]
+    command: mosquitto -c /mosquitto-no-auth.conf
+    volumes: [mosquitto-data:/mosquitto/data]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on: [influxdb]
+
+volumes:
+  influx-data:
+  mosquitto-data:
+  grafana-data:

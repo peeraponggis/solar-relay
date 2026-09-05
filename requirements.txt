@@ -1,0 +1,17 @@
+# core
+pyyaml>=6
+httpx>=0.27
+# local adapters
+pymodbus>=3.7
+pysunspec2>=1.1
+pysolarmanv5>=3.0
+goodwe>=0.4
+# clouds
+growattServer>=1.5
+cryptography>=42
+# outputs
+paho-mqtt>=1.6,<2
+influxdb-client>=1.40
+# dev
+pytest>=8
+pytest-asyncio>=0.23
