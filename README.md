@@ -64,6 +64,16 @@ docker run -d --name solar-relay -v $PWD/config:/config:ro --env-file .env ghcr.
 - `.github/workflows/release.yml` เมื่อ push tag `v*` จะสร้าง GitHub Release อัตโนมัติ ใส่ release notes จากหัวข้อของเวอร์ชันนั้นใน CHANGELOG.md บวกคำสั่ง docker pull และแนบ wheel/sdist สำหรับ tag ที่มีอยู่แล้วให้รันด้วยมือที่ Actions → Release → Run workflow ใส่ชื่อ tag
 - ออก release: เพิ่มหัวข้อ `## vX.Y.Z` ใน CHANGELOG.md, ปรับ version ใน pyproject.toml และ solar_relay/__init__.py แล้ว `git tag vX.Y.Z && git push --tags`
 
+## ทดสอบกับ inverter จริงที่หน้างาน
+
+```bash
+python -m solar_relay.probe 192.168.1.30                        # สแกน port, SunSpec และทุก brand map แล้วเสนอ config
+python -m solar_relay.probe 192.168.1.50 --serial 2712345678    # Solarman stick
+python -m solar_relay.probe --rtu COM3 --baud 9600 --maps solis # RS485 ตรง
+```
+
+ขั้นตอนเต็ม เช็กลิสต์ต่อยี่ห้อ (ต้องเปิดอะไร port/unit อะไร) และวิธีตรวจเครื่องหมาย grid/battery อยู่ที่ [docs/SITE_TEST.md](docs/SITE_TEST.md)
+
 ## Grafana dashboard
 
 `docker compose up` จะ provision datasource InfluxDB และ dashboard **Solar Relay - Overview** (โฟลเดอร์ Solar) ให้อัตโนมัติ
