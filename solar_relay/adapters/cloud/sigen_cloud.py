@@ -94,9 +94,12 @@ class SigenCloudAdapter(CloudAdapter):
         self.batt_charge_positive = bool(options.get("battery_positive_is_charge", True))
         self.user_device_id = str(int(time.time() * 1000))
         self.session_id = str(uuid.uuid4())
-        self._token: str | None = None
-        self._refresh: str | None = None
-        self._expiry = 0.0
+        # advanced: paste tokens captured from the browser (DevTools > Network > auth/oauth/token response) to skip the password login
+        self._token: str | None = options.get("access_token") or None
+        self._refresh: str | None = options.get("refresh_token") or None
+        self._expiry = time.time() + 3600 if self._token else 0.0
+        if options.get("password_encrypted"):          # the `password` form field exactly as the web app sends it
+            self._password_enc = str(options["password_encrypted"])
         self._stations: list[dict[str, Any]] = []
 
     # ---- headers / auth -------------------------------------------------
@@ -119,7 +122,11 @@ class SigenCloudAdapter(CloudAdapter):
                                   headers=self._headers("application/x-www-form-urlencoded", "auth/oauth/token", bearer=False),
                                   auth=("sigen", "sigen"))
         if r.status_code == 401:
-            raise PermissionError(f"Sigen login rejected (401): {r.text[:200]}")
+            raise PermissionError(
+                "Sigen login rejected (401). This adapter speaks the OWNER (mySigen app) API; installer / business accounts "
+                "(web-apac.sigencloud.com/bmsys) are not accepted there. Use the customer's mySigen owner login, get the company "
+                "invited as an owner/viewer of the station in the mySigen app, or paste access_token/refresh_token captured from "
+                f"the mySigen web app (DevTools > Network > auth/oauth/token). Server said: {r.text[:160]}")
         r.raise_for_status()
         j = r.json()
         data = j.get("data") or {}
@@ -165,7 +172,8 @@ class SigenCloudAdapter(CloudAdapter):
 
     # ---- adapter --------------------------------------------------------
     async def start(self) -> None:
-        await self._login()
+        if not self._token:
+            await self._login()
         home = await self._get("device/owner/station/home") or {}
         stations: list[dict[str, Any]] = []
         if home.get("stationId") is not None:

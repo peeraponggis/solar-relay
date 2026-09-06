@@ -66,6 +66,28 @@ async def test_adapter_login_home_energyflow_with_mock_server():
 
 
 @pytest.mark.asyncio
+async def test_adapter_uses_pasted_access_token_without_login():
+    seen: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req.url.path)
+        assert req.url.path != "/auth/oauth/token"
+        assert req.headers["Authorization"] == "Bearer PASTED"
+        if req.url.path == "/device/owner/station/home":
+            return httpx.Response(200, json={"code": 0, "data": {"stationId": 7}})
+        if req.url.path == "/device/sigen/station/energyflow":
+            return httpx.Response(200, json={"code": 0, "data": {"pvPower": 1.0}})
+        return httpx.Response(200, json={"code": 0, "data": []})
+
+    a = SigenCloudAdapter("s", username="u", password="p", region="apac", access_token="PASTED", refresh_token="R")
+    await a._http.aclose()
+    a._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await a.start()
+    assert (await a.read())[0].pv_w == 1000 and "/auth/oauth/token" not in seen
+    await a.stop()
+
+
+@pytest.mark.asyncio
 async def test_adapter_reports_login_rejection():
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(401, text="bad credentials")
