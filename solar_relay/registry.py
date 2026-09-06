@@ -26,6 +26,7 @@ ADAPTERS: dict[str, str] = {
     "cloud:solaredge":  "solar_relay.adapters.cloud.solaredge_monitoring:SolarEdgeMonitoringAdapter",
     "cloud:fronius":    "solar_relay.adapters.cloud.fronius_solarweb:FroniusSolarWebAdapter",
     "cloud:sma":        "solar_relay.adapters.cloud.sma_sunnyportal:SmaSunnyPortalAdapter",
+    "cloud:sigen":      "solar_relay.adapters.cloud.sigen_cloud:SigenCloudAdapter",         # mySigen portal account (unofficial)
 }
 
 OUTPUTS: dict[str, str] = {

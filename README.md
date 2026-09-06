@@ -18,7 +18,7 @@ adapters (sunspec | modbus | solarman | goodwe | fronius_solarapi | sigen_openap
 | ยี่ห้อ | Local (แนะนำ) | Cloud (สำรอง) | หมายเหตุการติดตั้ง |
 |---|---|---|---|
 | Huawei SUN2000 | `modbus` map `huawei` (SDongle TCP 502, unit 1) | `cloud:huawei` Northbound | ขอ Northbound account จากผู้ติดตั้ง; getDevRealKpi จำกัด 1 ครั้ง/5 นาที |
-| Sigenergy | `modbus` map `sigen_local` (unit 247, ผู้ติดตั้งต้องเปิด Modbus TCP) | `sigen_openapi` (push ผ่าน MQTT, vendor account) | OpenAPI ต้องบอร์ดเป็น vendor; Sigen push telemetry ทุก 5 นาที + alarm |
+| Sigenergy | `modbus` map `sigen_local` (unit 247, ผู้ติดตั้งต้องเปิด Modbus TCP) | `cloud:sigen` (บัญชี mySigen, unofficial) / `sigen_openapi` (push ผ่าน MQTT, vendor account) | cloud:sigen ใช้ email/รหัสผ่านของ mySigen ได้เลย region apac = web-apac.sigencloud.com; OpenAPI ต้องบอร์ดเป็น vendor |
 | Solis | `modbus` map `solis` (DLS-L / S2-WL-ST port 502, หรือ RS485 ตรง 9600) / `solarman` (DLS-W) | `cloud:soliscloud` v2 | S3-WIFI-ST ไม่มี local เลย; datalogger บางรุ่นปิด port 502 หลัง OTA |
 | SolarEdge | `sunspec` (port 1502, unit 1, meter ตามหลัง) | `cloud:solaredge` (300 req/วัน) | เปิด Modbus TCP ใน SetApp |
 | Fronius | `sunspec` (unit 1 + 240 meter) หรือ `fronius_solarapi` (JSON) | `cloud:fronius` Solar.web API (เสียเงิน) | ตั้ง SunSpec Model Type = int+SF |

@@ -136,6 +136,10 @@ devices:
     adapter: cloud:sma
     enabled: false
     options: {username: "${SMA_USER}", password: "${SMA_PASS}"}
+  - id: sigen-cloud                # mySigen portal account (unofficial web-app API); region apac = web-apac.sigencloud.com
+    adapter: cloud:sigen
+    enabled: false
+    options: {username: "${SIGEN_USER}", password: "${SIGEN_PASS}", region: apac}
 
 # ------------------------------------------------------------------ customers / sites (built-in web UI)
 sites:

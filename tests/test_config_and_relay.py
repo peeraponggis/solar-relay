@@ -34,7 +34,7 @@ def test_example_config_parses(tmp_path, monkeypatch):
                 "SOLARMAN_APP_ID", "SOLARMAN_APP_SECRET", "SOLARMAN_EMAIL", "SOLARMAN_PASS", "SEMS_USER", "SEMS_PASS",
                 "SEMS_PS_ID", "GROWATT_USER", "GROWATT_PASS", "SG_APP_KEY", "SG_ACCESS_KEY", "SG_USER", "SG_PASS",
                 "SE_API_KEY", "SE_SITE_ID", "FRONIUS_KEY_ID", "FRONIUS_KEY_VALUE", "FRONIUS_SYSTEM_ID", "SMA_USER",
-                "SMA_PASS", "PVOUTPUT_KEY", "INFLUX_TOKEN"):
+                "SMA_PASS", "PVOUTPUT_KEY", "INFLUX_TOKEN", "SIGEN_USER", "SIGEN_PASS"):
         monkeypatch.setenv(var, "x")
     cfg = RelayConfig.load(src)
     assert len(cfg.devices) > 20
