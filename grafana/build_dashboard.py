@@ -14,7 +14,7 @@ from pathlib import Path
 DS = {"type": "influxdb", "uid": "influx-solar"}
 OUT = Path(__file__).parent / "provisioning" / "dashboards" / "solar-relay-overview.json"
 
-FILTER = '  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)'
+FILTER = '  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)'
 
 
 def series(field: str, label: str | None = None, agg: str = "mean") -> str:
@@ -204,6 +204,8 @@ def build() -> dict:
         "refresh": "30s",
         "time": {"from": "now-24h", "to": "now"},
         "templating": {"list": [
+            {"name": "site", "label": "Site / ลูกค้า", "type": "query", "datasource": DS, "query": VAR.format(tag="site"),
+             "includeAll": True, "multi": True, "current": {"text": "All", "value": "$__all"}, "refresh": 2, "sort": 1},
             {"name": "device", "label": "Device", "type": "query", "datasource": DS, "query": VAR.format(tag="device_id"),
              "includeAll": True, "multi": True, "current": {"text": "All", "value": "$__all"}, "refresh": 2, "sort": 1},
             {"name": "brand", "label": "Brand", "type": "query", "datasource": DS, "query": VAR.format(tag="brand"),

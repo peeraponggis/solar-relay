@@ -39,7 +39,7 @@ class InfluxDBOutput(BaseOutput):
     def points(reading: Reading, measurement: str = "inverter") -> list[Any]:
         from influxdb_client import Point
         p = (Point(measurement).tag("device_id", reading.device_id).tag("brand", reading.brand)
-             .tag("source", reading.source).time(reading.ts))
+             .tag("source", reading.source).tag("site", str(reading.extra.get("site_id") or "unassigned")).time(reading.ts))
         for k, v in reading.numeric_fields().items():
             p.field(k, v)
         p.field("online", 1 if reading.online else 0)
@@ -49,6 +49,7 @@ class InfluxDBOutput(BaseOutput):
         pts = [p]
         for a in reading.alarms:
             pts.append(Point("alarm").tag("device_id", reading.device_id).tag("brand", reading.brand).tag("code", a.code)
+                       .tag("site", str(reading.extra.get("site_id") or "unassigned"))
                        .tag("category", a.category or "unknown")
                        .field("active", 1 if a.active else 0).field("message", a.message or "").field("severity", a.severity)
                        .field("advice", a.advice or "")

@@ -56,6 +56,57 @@ const t=iso=>iso?new Date(iso).toLocaleString('th-TH',{hour12:false}):'–';
 const age=s=>s==null?'ไม่มีข้อมูล':s<90?s+' วิ':s<5400?Math.round(s/60)+' นาที':Math.round(s/3600)+' ชม.';
 const sev=s=>({fault:'<span class="badge b-bad">ผิดพลาด</span>',warning:'<span class="badge b-warn">เตือน</span>',info:'<span class="badge b-info">ข้อมูล</span>'}[s]||'');
 const gridTxt=v=>v==null?'–':(v>=0?'ซื้อ ':'ขาย ')+fmtW(Math.abs(v));const battTxt=v=>v==null?'–':(v>=0?'ชาร์จ ':'คาย ')+fmtW(Math.abs(v));
+// ---- charts (inline SVG, no CDN) ----------------------------------------------------------------
+function svgChart(pts,series,opts){opts=opts||{};const W=opts.w||760,H=opts.h||220,L=54,R=(opts.right?54:12),T=12,B=26,iw=W-L-R,ih=H-T-B;
+ const xs=pts.map(p=>p.t);const x0=Math.min(...xs),x1=Math.max(...xs)||x0+1;const X=t=>L+(t-x0)/(x1-x0||1)*iw;
+ const left=series.filter(s=>!s.right),right=series.filter(s=>s.right);
+ function scale(ss){let vals=[];ss.forEach(s=>pts.forEach(p=>{if(p[s.key]!=null)vals.push(p[s.key])}));if(!vals.length)vals=[0,1];let lo=Math.min(0,...vals),hi=Math.max(...vals);if(hi===lo)hi=lo+1;if(ss.some(s=>s.pct)){lo=0;hi=100}const pad=(hi-lo)*0.08;lo-= (lo<0?pad:0);hi+=pad;return v=>T+ih-(v-lo)/(hi-lo)*ih}
+ const YL=scale(left),YR=right.length?scale(right):null;
+ function path(s){const Y=s.right?YR:YL;let d='',pen=false;pts.forEach(p=>{const v=p[s.key];if(v==null){pen=false;return}d+=(pen?'L':'M')+X(p.t).toFixed(1)+' '+Y(v).toFixed(1)+' ';pen=true});return d}
+ function area(s){const Y=s.right?YR:YL,y0=Y(0);let out='';let seg=[];const flush=()=>{if(seg.length>1){out+='M'+seg[0][0].toFixed(1)+' '+y0.toFixed(1)+' '+seg.map(q=>'L'+q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' ')+' L'+seg[seg.length-1][0].toFixed(1)+' '+y0.toFixed(1)+' Z '}seg=[]};pts.forEach(p=>{const v=p[s.key];if(v==null){flush();return}seg.push([X(p.t),Y(v)])});flush();return out}
+ const ticks=[];for(let i=0;i<=4;i++){const t=x0+(x1-x0)*i/4;ticks.push(`<text x="${X(t).toFixed(0)}" y="${H-8}" font-size="11" text-anchor="middle" fill="#6b7280">${new Date(t*1000).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</text>`)}
+ const yticks=[];{const inv=v=>v;const vals=left;let lo=Infinity,hi=-Infinity;vals.forEach(s=>pts.forEach(p=>{if(p[s.key]!=null){lo=Math.min(lo,p[s.key]);hi=Math.max(hi,p[s.key])}}));if(lo===Infinity){lo=0;hi=1}lo=Math.min(0,lo);if(left.some(s=>s.pct)){lo=0;hi=100}for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;yticks.push(`<text x="${L-6}" y="${(YL(v)+4).toFixed(0)}" font-size="11" text-anchor="end" fill="#6b7280">${left.some(s=>s.pct)?v.toFixed(0)+'%':(Math.abs(v)>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0))}</text><line x1="${L}" x2="${W-R}" y1="${YL(v).toFixed(1)}" y2="${YL(v).toFixed(1)}" stroke="#eef0f3"/>`)}}
+ const zero=`<line x1="${L}" x2="${W-R}" y1="${YL(0).toFixed(1)}" y2="${YL(0).toFixed(1)}" stroke="#cbd5e1" stroke-dasharray="3 3"/>`;
+ const body=series.map(s=>(s.fill?`<path d="${area(s)}" fill="${s.color}" fill-opacity="0.12"/>`:'')+`<path d="${path(s)}" fill="none" stroke="${s.color}" stroke-width="2"/>`).join('');
+ const legend=series.map(s=>`<span style="display:inline-block;margin-right:12px"><span style="display:inline-block;width:12px;height:3px;background:${s.color};vertical-align:middle;margin-right:4px"></span>${s.name}</span>`).join('');
+ return `<div class="small muted" style="margin-bottom:4px">${legend}</div><svg viewBox="0 0 ${W} ${H}" width="100%" style="max-height:${H}px;display:block">${yticks.join('')}${zero}${body}${ticks.join('')}</svg>`}
+const POWER_SERIES=[{key:'pv_w',name:'PV',color:'#d97706',fill:true},{key:'load_w',name:'โหลด',color:'#2563eb'},{key:'grid_w',name:'กริด (+ซื้อ/−ขาย)',color:'#dc2626'},{key:'batt_w',name:'แบต (+ชาร์จ/−คาย)',color:'#16a34a'}];
+const SOC_SERIES=[{key:'soc',name:'SOC %',color:'#7c3aed',pct:true,fill:true}];
+async function loadChart(elId,query,series,opts){const el=document.getElementById(elId);if(!el)return;try{const h=await (await fetch('/api/history?'+query)).json();
+ if(!h.points||!h.points.some(p=>p.pv_w!=null||p.soc!=null)){el.innerHTML='<div class="empty">ยังไม่มีข้อมูลย้อนหลัง (เก็บตั้งแต่ relay เริ่มทำงาน)</div>';return}
+ el.innerHTML=svgChart(h.points,series,opts)}catch(e){el.innerHTML='<div class="muted small">โหลดกราฟไม่ได้: '+e+'</div>'}}
+function chartBox(id,title,extra){return `<div class="card"><div class="row"><h3 style="margin:0">${title}</h3>${extra||''}</div><div id="${id}" style="margin-top:6px"><div class="empty">กำลังโหลดกราฟ…</div></div></div>`}
+function hoursSel(scope){const cur=hrs(scope);return `<select onchange="window._hrs_${scope}=this.value;render()" style="margin-left:auto">${[3,12,24,48].map(h=>`<option value="${h}" ${+cur===h?'selected':''}>${h} ชม.</option>`).join('')}</select>`}
+function hrs(scope){return window['_hrs_'+scope]||24}
+
+// ---- site / customer editing -----------------------------------------------------------------
+function siteForm(s){s=s||{id:'',name:'',customer:'',phone:'',address:'',note:'',devices:[]};const isNew=!s.id;
+ const all=S.sites.flatMap(x=>x.devices.map(d=>d.device_id));
+ return `<div class="card" id="site-form" style="border-color:var(--brand)"><h3 style="margin:0 0 8px">${isNew?'เพิ่มไซต์/ลูกค้าใหม่':'แก้ไข '+esc(s.name)}</h3>
+ <div class="grid g2">
+  <label>รหัสไซต์ (ภาษาอังกฤษ ไม่มีช่องว่าง)<br><input id="sf-id" value="${esc(s.id)}" ${isNew?'':'readonly'} placeholder="site-somchai" style="width:100%"></label>
+  <label>ชื่อไซต์<br><input id="sf-name" value="${esc(s.name)}" placeholder="บ้านคุณสมชาย" style="width:100%"></label>
+  <label>ชื่อลูกค้า<br><input id="sf-customer" value="${esc(s.customer)}" style="width:100%"></label>
+  <label>โทรศัพท์<br><input id="sf-phone" value="${esc(s.phone)}" style="width:100%"></label>
+  <label>ที่อยู่<br><input id="sf-address" value="${esc(s.address)}" style="width:100%"></label>
+  <label>หมายเหตุ<br><input id="sf-note" value="${esc(s.note)}" style="width:100%"></label>
+ </div>
+ <div style="margin-top:8px"><b class="small">อุปกรณ์ในไซต์นี้</b> <span class="small muted">(เลือกได้หลายตัว อุปกรณ์หนึ่งตัวอยู่ได้ไซต์เดียว)</span><div class="row" style="margin-top:4px">
+ ${all.map(d=>`<label class="small"><input type="checkbox" class="sf-dev" value="${esc(d)}" ${s.devices.includes(d)?'checked':''}> ${esc(d)}</label>`).join('')||'<span class="muted small">ยังไม่มีอุปกรณ์ใน config</span>'}</div></div>
+ <div class="row" style="margin-top:10px"><button onclick="saveSite()">บันทึก</button><button class="sec" onclick="closeSiteForm()">ยกเลิก</button>${isNew?'':`<button class="sec" style="margin-left:auto;color:var(--bad)" onclick="deleteSite('${esc(s.id)}')">ลบไซต์</button>`}
+ <span id="sf-msg" class="small muted"></span></div>
+ <div class="small muted" style="margin-top:6px">บันทึกลงไฟล์ sites.yaml ข้าง config.yaml (ไม่ทับ config.yaml) มีผลทันที ไม่ต้อง restart</div></div>`}
+let editingSite=null;
+function editSite(id){editingSite=id||'__new__';render();setTimeout(()=>{const f=document.getElementById('site-form');if(f)f.scrollIntoView({behavior:'smooth',block:'start'})},50)}
+function closeSiteForm(){editingSite=null;render()}
+async function saveSite(){const body={id:$('#sf-id').value.trim(),name:$('#sf-name').value.trim(),customer:$('#sf-customer').value.trim(),phone:$('#sf-phone').value.trim(),address:$('#sf-address').value.trim(),note:$('#sf-note').value.trim(),devices:[...document.querySelectorAll('.sf-dev:checked')].map(x=>x.value)};
+ if(!body.id){$('#sf-msg').textContent='ต้องใส่รหัสไซต์';return}
+ const r=await fetch('/api/sites',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json();
+ if(!r.ok){$('#sf-msg').textContent='บันทึกไม่ได้: '+(j.detail||JSON.stringify(j));return}
+ editingSite=null;await load()}
+async function deleteSite(id){if(!confirm('ลบไซต์ '+id+' ? อุปกรณ์จะย้ายไป "ไม่ระบุไซต์"'))return;await fetch('/api/sites/'+encodeURIComponent(id),{method:'DELETE'});editingSite=null;await load()}
+function siteFormFor(id){if(editingSite==='__new__')return siteForm(null);if(editingSite&&editingSite===id){const s=S.sites.find(x=>x.id===id);return s?siteForm({...s,devices:s.devices.map(d=>d.device_id)}):''}return ''}
+
 function statusBadge(d){if(!d.has_data)return '<span class="badge b-muted">รอข้อมูล</span>';if(!d.online)return '<span class="badge b-bad">ออฟไลน์</span>';
  if(d.alarms.some(a=>a.severity==='fault'))return '<span class="badge b-bad">ผิดพลาด</span>';if(d.alarm_count)return '<span class="badge b-warn">มีแจ้งเตือน</span>';return '<span class="badge b-ok">ปกติ</span>'}
 
@@ -75,6 +126,7 @@ function vOverview(){const T=S.totals;return `
   <div class="card kpi"><div class="l">แจ้งเตือนค้าง</div><div class="v" style="color:${T.alarms?'var(--bad)':'var(--ok)'}">${T.alarms}</div><div class="l">ผิดพลาด ${T.faults} · ยังไม่รับทราบ ${T.unacked}</div></div>
  </div>
  ${kpis(T)}
+ <div style="margin-top:12px">${chartBox('chart-all','กำลังไฟรวมทุกไซต์ (W)',hoursSel('all'))}</div>
  <h2>ไซต์ทั้งหมด</h2>
  <div class="grid g2">${S.sites.map(s=>`<div class="card site" onclick="go('site','${esc(s.id)}')">
    <div class="row"><b>${esc(s.name)}</b> ${s.offline?`<span class="badge b-bad">ออฟไลน์ ${s.offline}</span>`:''} ${s.alarms?`<span class="badge ${s.faults?'b-bad':'b-warn'}">แจ้งเตือน ${s.alarms}</span>`:'<span class="badge b-ok">ปกติ</span>'}</div>
@@ -84,19 +136,24 @@ function vOverview(){const T=S.totals;return `
    <div><span class="small muted">วันนี้</span><b>${fmtK(s.energy_day_kwh)}</b></div>${s.soc_avg!=null?`<div><span class="small muted">SOC</span><b>${fmtP(s.soc_avg)}</b></div>`:''}</div>
   </div>`).join('')||'<div class="empty">ยังไม่มีไซต์ เพิ่ม sites: ใน config.yaml</div>'}</div>`}
 
-function vSites(){return `<h2>รายชื่อลูกค้า / ไซต์</h2><div class="card"><table><thead><tr><th>ไซต์</th><th>ลูกค้า</th><th>โทร</th><th>ที่อยู่</th><th class="num">อุปกรณ์</th><th>สถานะ</th><th class="num">PV</th><th class="num">วันนี้</th></tr></thead><tbody>
+function vSites(){return `<div class="row"><h2 style="margin:0">รายชื่อลูกค้า / ไซต์</h2><button style="margin-left:auto" onclick="editSite('')">+ เพิ่มไซต์/ลูกค้า</button></div>
+ ${editingSite==='__new__'?siteForm(null):''}
+ <div class="card" style="margin-top:10px"><table><thead><tr><th>ไซต์</th><th>ลูกค้า</th><th>โทร</th><th>ที่อยู่</th><th class="num">อุปกรณ์</th><th>สถานะ</th><th class="num">PV</th><th class="num">วันนี้</th><th></th></tr></thead><tbody>
  ${S.sites.map(s=>`<tr class="click" onclick="go('site','${esc(s.id)}')"><td><b>${esc(s.name)}</b><div class="small muted">${esc(s.id)}</div></td><td>${esc(s.customer)}</td><td>${s.phone?`<a href="tel:${esc(s.phone)}">${esc(s.phone)}</a>`:''}</td><td class="small">${esc(s.address)}</td>
  <td class="num">${s.online}/${s.device_count}</td><td>${s.offline?`<span class="badge b-bad">ออฟไลน์ ${s.offline}</span> `:''}${s.alarms?`<span class="badge ${s.faults?'b-bad':'b-warn'}">แจ้งเตือน ${s.alarms}</span>`:(s.offline?'':'<span class="badge b-ok">ปกติ</span>')}</td>
- <td class="num">${fmtW(s.pv_w)}</td><td class="num">${fmtK(s.energy_day_kwh)}</td></tr>`).join('')}</tbody></table></div>`}
+ <td class="num">${fmtW(s.pv_w)}</td><td class="num">${fmtK(s.energy_day_kwh)}</td><td>${s.id==='_unassigned'?'':`<button class="sec" onclick="event.stopPropagation();editSite('${esc(s.id)}')">แก้ไข</button>`}</td></tr>${editingSite===s.id?`<tr><td colspan="9">${siteFormFor(s.id)}</td></tr>`:''}`).join('')}</tbody></table></div>`}
 
 function devTable(devs){return `<table><thead><tr><th>อุปกรณ์</th><th>ยี่ห้อ</th><th>สถานะ</th><th class="num">PV</th><th class="num">AC</th><th class="num">โหลด</th><th class="num">กริด</th><th class="num">แบต</th><th class="num">SOC</th><th class="num">วันนี้</th><th>อัปเดต</th></tr></thead><tbody>
  ${devs.map(d=>`<tr class="click" onclick="go('device','${esc(d.device_id)}')"><td><b>${esc(d.device_id)}</b><div class="small muted">${esc(d.status||'')}</div></td><td>${esc(d.brand||'')}<div class="small muted">${esc(d.adapter||d.source||'')}</div></td><td>${statusBadge(d)}</td>
  <td class="num">${fmtW(d.pv_w)}</td><td class="num">${fmtW(d.ac_w)}</td><td class="num">${fmtW(d.load_w)}</td><td class="num">${gridTxt(d.grid_w)}</td><td class="num">${battTxt(d.batt_w)}</td><td class="num">${fmtP(d.soc)}</td><td class="num">${fmtK(d.energy_day_kwh)}</td><td class="small">${age(d.age_s)}</td></tr>`).join('')}</tbody></table>`}
 
 function vSite(id){const s=S.sites.find(x=>x.id===id);if(!s)return '<div class="empty">ไม่พบไซต์</div>';const al=S.active_alarms.filter(a=>a.site_id===id);
- return `<div class="row"><button class="sec" onclick="go('sites')">← ไซต์ทั้งหมด</button><h2 style="margin:0">${esc(s.name)}</h2></div>
+ return `<div class="row"><button class="sec" onclick="go('sites')">← ไซต์ทั้งหมด</button><h2 style="margin:0">${esc(s.name)}</h2>${s.id==='_unassigned'?'':`<button class="sec" style="margin-left:auto" onclick="editSite('${esc(s.id)}')">แก้ไขข้อมูลลูกค้า</button>`}</div>
+ ${editingSite===s.id?siteFormFor(s.id):''}
  <div class="card small" style="margin:10px 0">ลูกค้า <b>${esc(s.customer)||'–'}</b> · โทร ${s.phone?`<a href="tel:${esc(s.phone)}">${esc(s.phone)}</a>`:'–'} · ${esc(s.address)||''} ${s.note?'<br>หมายเหตุ: '+esc(s.note):''}</div>
- ${kpis(s)}<h2>อุปกรณ์ในไซต์</h2><div class="card">${devTable(s.devices)}</div>
+ ${kpis(s)}
+ <div class="grid g2" style="margin-top:12px">${chartBox('chart-site','กำลังไฟของไซต์ (W)',hoursSel('site'))}${chartBox('chart-site-soc','แบตเตอรี่ SOC (%)')}</div>
+ <h2>อุปกรณ์ในไซต์</h2><div class="card">${devTable(s.devices)}</div>
  <h2>แจ้งเตือนค้าง (${al.length})</h2>${al.length?al.map(alarmCard).join(''):'<div class="card empty">ไม่มี</div>'}`}
 
 function vDevices(){const devs=S.sites.flatMap(s=>s.devices.map(d=>({...d,site_name:s.name})));return `<h2>อุปกรณ์ทั้งหมด (${devs.length})</h2><div class="card">${devTable(devs)}</div>`}
@@ -107,6 +164,7 @@ function vDevice(id){let d=null;for(const s of S.sites){d=s.devices.find(x=>x.de
   ['ซื้อ / ขาย วันนี้',fmtK(d.grid_import_day_kwh)+' / '+fmtK(d.grid_export_day_kwh)],['ชาร์จ / คาย วันนี้',fmtK(d.batt_charge_day_kwh)+' / '+fmtK(d.batt_discharge_day_kwh)],['โหลดวันนี้',fmtK(d.load_day_kwh)]];
  const strings=Object.entries(d.strings||{});
  return `<div class="row"><button class="sec" onclick="go('site','${esc(d.site_id)}')">← ${esc(d.site_name)}</button><h2 style="margin:0">${esc(d.device_id)} ${statusBadge(d)}</h2><span class="muted small">${esc(d.brand||'')} · ${esc(d.adapter||d.source||'')}</span></div>
+ <div style="margin-top:10px">${chartBox('chart-dev','กำลังไฟของอุปกรณ์ (W)',hoursSel('dev'))}</div>
  <div class="grid g2" style="margin-top:10px"><div class="card"><table>${rows.map(r=>`<tr><th>${r[0]}</th><td>${r[1]}</td></tr>`).join('')}</table></div>
  <div><div class="card"><h3>String (แผง)</h3>${strings.length?`<table><tr><th>string</th><th class="num">V</th><th class="num">A</th><th class="num">W</th></tr>${strings.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.v??'–'}</td><td class="num">${v.a??'–'}</td><td class="num">${v.w??'–'}</td></tr>`).join('')}</table>`:'<div class="muted small">ไม่มีข้อมูลราย string</div>'}</div>
  <div class="card" style="margin-top:12px"><h3>ข้อมูลเพิ่มเติม</h3><pre style="max-height:220px">${esc(JSON.stringify(d.extra||{},null,1))}</pre></div></div></div>
@@ -134,17 +192,62 @@ function vService(){const A=S.active_alarms;const off=S.sites.flatMap(s=>s.devic
  <h3>ประวัติล่าสุด</h3><div class="card"><table><tr><th>เวลา</th><th>เหตุการณ์</th><th>อุปกรณ์</th><th>ไซต์</th><th>รหัส</th><th>รายละเอียด</th></tr>
  ${S.history.slice(0,100).map(h=>`<tr><td class="small">${t(h.at)}</td><td>${({raised:'<span class="badge b-bad">เกิด</span>',recovered:'<span class="badge b-ok">หาย</span>',acked:'<span class="badge b-info">รับทราบ</span>'})[h.event]||h.event}</td><td>${esc(h.device_id)}</td><td>${esc(h.site_name||'')}</td><td><b>${esc(h.code)}</b></td><td class="small">${esc(h.message||'')} ${h.ack_note?'· '+esc(h.ack_note):''}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">ยังไม่มี</td></tr>'}</table></div>`}
 
-function vProbe(){return `<h2>ตรวจสอบ inverter จาก browser</h2><div class="card">
- <div class="row"><label>IP <input id="p-host" placeholder="192.168.1.30"></label><label>Solarman serial <input id="p-serial" placeholder="27xxxxxxxx (ถ้ามี stick)"></label>
+function vProbe(){return `<h2>ตรวจสอบ inverter จาก browser</h2>
+ <div class="grid g2">
+  <div class="card"><div class="row"><h3 style="margin:0">1. เครื่องนี้ (ที่รัน relay)</h3><button class="sec" onclick="loadNet()">รีเฟรช</button></div><div id="net-info" class="small muted">กำลังอ่าน…</div></div>
+  <div class="card"><div class="row"><h3 style="margin:0">2. อุปกรณ์ในวงเดียวกัน</h3>
+   <label class="small">วง <input id="d-cidr" placeholder="ว่าง = วงของเครื่องนี้" style="width:170px"></label>
+   <button id="d-run" onclick="discover()">ค้นหาอุปกรณ์ในวง</button></div>
+   <div class="small muted">ping ทุก IP + ARP + ยี่ห้อจาก MAC + ชื่อเครื่อง + port Modbus ใช้เวลา 5-20 วินาที</div>
+   <div id="d-out" class="small muted" style="margin-top:6px">ยังไม่ได้ค้นหา</div></div>
+ </div>
+ <div class="card" style="margin-top:12px"><h3 style="margin:0 0 6px">3. ตรวจอุปกรณ์ / สแกน Modbus</h3>
+ <div class="row" style="margin-bottom:8px"><b>สแกนทั้งวง</b> <label>CIDR <input id="p-scan" placeholder="ว่าง = วงของเครื่องนี้ เช่น 192.168.1.0/24" style="min-width:280px"></label>
+ <button id="p-scan-run" onclick="probe(true)">สแกนหา inverter ในวง</button></div>
+ <div class="row"><b>ระบุเครื่อง</b> <label>IP <input id="p-host" placeholder="192.168.1.30"></label><label>port <input id="p-port" placeholder="502/6607" size="6"></label><label>Solarman serial <input id="p-serial" placeholder="27xxxxxxxx (ถ้ามี stick)"></label>
  <label>RS485 port <input id="p-rtu" placeholder="COM3 หรือ /dev/ttyUSB0"></label><label>baud <input id="p-baud" value="9600" size="6"></label>
- <label>maps <input id="p-maps" placeholder="huawei,solis (ว่าง = ทั้งหมด)"></label><label>units <input id="p-units" placeholder="1,2,3,247"></label>
- <button id="p-run" onclick="probe()">สแกน</button></div>
- <div class="small muted" style="margin-top:6px">สแกน port 502/1502/6607/8899, SunSpec และทุก brand map ใช้เวลา 10-60 วินาที ผลจะเสนอ config ให้คัดลอกลง config.yaml</div>
- <pre id="p-out" style="margin-top:10px">ยังไม่ได้สแกน</pre></div>`}
+ <label>maps <input id="p-maps" placeholder="huawei,solis (ว่าง = ทั้งหมด)"></label><label>units <input id="p-units" placeholder="1,2,3,247"></label><label>timeout <input id="p-timeout" value="3" size="3"></label>
+ <button id="p-run" onclick="probe()">ตรวจสอบ</button></div>
+ <div class="small" style="margin-top:8px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:8px">
+  <b>ปุ่ม "ตรวจสอบ" ทำอะไร</b> (ทำตามลำดับ เห็นทุกขั้นใน console ด้านล่าง)<br>
+  1) ต่อ TCP ไปที่ IP ตาม port ที่ระบุ (ถ้าไม่ระบุจะลอง 502, 1502, 6607, 8899)<br>
+  2) ถ้า port เป็น 502/1502 อ่าน register 40000 ดูว่ามีคำว่า "SunS" หรือไม่ = อุปกรณ์รองรับมาตรฐาน SunSpec (SolarEdge, Fronius, SMA, Delta ฯลฯ) → ใช้ adapter sunspec ได้เลย<br>
+  3) ลองอ่านด้วยตาราง register ของแต่ละยี่ห้อ (huawei, solis, sungrow, solax, deye, sofar, sigen) ทีละ unit id แล้วให้คะแนนว่าค่าที่ได้สมเหตุสมผลไหม (แรงดัน 90-500 V, ความถี่ 45-65 Hz, SOC 0-100 ฯลฯ) — port 6607 ของ Huawei จะข้ามข้อ 2 และลอง unit 0 กับ 1 เท่านั้น<br>
+  4) ตัวที่คะแนนสูงสุดและมี * คือคำตอบ ท้าย console จะพิมพ์บล็อก <code>devices:</code> ให้คัดลอกไปวางใน config.yaml (C:\\enterprise\\solar-relay\\config.yaml) แล้ว restart relay<br>
+  <span class="muted">Huawei ผ่าน hotspot: inverter รับ Modbus ได้ทีละ 1 client ต้องปิดแอป SUN2000 และ relay ที่ชี้ IP เดียวกันจะแย่งกัน (ระหว่างตรวจ relay อ่านไม่ได้ชั่วคราว)</span>
+ </div>
+ <div class="row" style="margin-top:10px"><b>Console</b> <span id="p-status" class="small muted">พร้อม</span><button id="p-stop" class="sec" style="display:none" onclick="probeStop()">หยุด</button></div>
+ <pre id="p-out" style="margin-top:6px">ยังไม่ได้สแกน</pre></div>`}
 
-async function probe(){const b=$('#p-run');b.disabled=true;$('#p-out').textContent='กำลังสแกน…';
- const body={host:$('#p-host').value.trim(),serial:$('#p-serial').value.trim()||null,rtu:$('#p-rtu').value.trim()||null,baud:+$('#p-baud').value||9600,maps:$('#p-maps').value.trim()||null,units:$('#p-units').value.trim()||null};
- try{const r=await fetch('/api/probe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json();$('#p-out').textContent=j.output||j.detail||JSON.stringify(j)}catch(e){$('#p-out').textContent='ผิดพลาด: '+e}b.disabled=false}
+async function loadNet(){try{const j=await (await fetch('/api/net')).json();
+ const ips=j.addresses.map(a=>`<b>${esc(a.ip)}</b>${a.primary?' <span class="badge b-ok">หลัก</span>':''} <span class="muted">(วง ${esc(a.subnet)})</span>`).join('<br>')||'ไม่พบ IPv4';
+ $('#net-info').innerHTML=`<div>IP ของเครื่องนี้:<br>${ips}</div><div style="margin-top:4px">Wi-Fi: <b>${esc(j.ssid||'ไม่ได้ต่อ Wi-Fi / ไม่ทราบ')}</b></div>
+ ${j.hotspots&&j.hotspots.length?`<div style="margin-top:4px">hotspot ของ inverter ที่มองเห็น: <b>${j.hotspots.map(esc).join(', ')}</b> <span class="muted">(ต่อ Wi-Fi นี้แล้ว inverter จะอยู่ที่ 192.168.200.1 port 6607 unit 0)</span></div>`:''}
+ <div class="muted" style="margin-top:4px">อุปกรณ์ต้องอยู่วงเดียวกับ IP ข้างบน ถ้าไม่ใช่ให้เปลี่ยน Wi-Fi/LAN ก่อนค้นหา</div>`;
+ if(!$('#d-cidr').value)$('#d-cidr').placeholder='ว่าง = '+(j.subnet||'วงของเครื่องนี้')}catch(e){$('#net-info').textContent='อ่านไม่ได้: '+e}}
+async function discover(){const b=$('#d-run');b.disabled=true;$('#d-out').textContent='กำลังค้นหา… (ping ทั้งวง)';
+ try{const q=$('#d-cidr').value.trim();const j=await (await fetch('/api/net/discover'+(q?'?cidr='+encodeURIComponent(q):''))).json();
+ if(j.error){$('#d-out').textContent=j.error;b.disabled=false;return}
+ const rows=j.hosts.map(h=>`<tr class="${h.likely_inverter?'':'muted'}"><td><b>${esc(h.ip)}</b>${h.this_pc?' <span class="badge b-info">เครื่องนี้</span>':''}${h.likely_inverter&&!h.this_pc?' <span class="badge b-warn">น่าจะใช่</span>':''}</td>
+  <td>${esc(h.hostname||'–')}</td><td class="small">${esc(h.vendor||'?')}<div class="muted">${esc(h.mac||'')}</div></td><td>${h.ports.length?h.ports.map(p=>`<span class="badge b-ok">${p}</span>`).join(' '):'<span class="muted">–</span>'}</td>
+  <td class="small">${esc(h.hint)}</td><td>${h.this_pc?'':`<button class="sec" onclick="fillProbe('${esc(h.ip)}','${h.ports[0]||''}')">ตรวจ</button>`}</td></tr>`).join('');
+ $('#d-out').innerHTML=`<div class="muted">วง ${esc(j.cidr)} พบ ${j.hosts.length} เครื่อง</div><div style="overflow:auto"><table><tr><th>IP</th><th>ชื่อ</th><th>ยี่ห้อ / MAC</th><th>port เปิด</th><th>คำแนะนำ</th><th></th></tr>${rows||'<tr><td colspan="6">ไม่พบเครื่องใดตอบ</td></tr>'}</table></div>`}
+ catch(e){$('#d-out').textContent='ผิดพลาด: '+e}b.disabled=false}
+function fillProbe(ip,port){$('#p-host').value=ip;$('#p-port').value=port||'';if(ip==='192.168.200.1'){$('#p-port').value='6607';$('#p-units').value='0,1';$('#p-timeout').value='10'}probe(false)}
+let probeTimer=null,probeJob=null;
+function followJob(job,offset){probeJob=job;let off=offset||0;const bs=[$('#p-run'),$('#p-scan-run')];bs.forEach(b=>b.disabled=true);$('#p-stop').style.display='';
+ clearInterval(probeTimer);probeTimer=setInterval(async()=>{try{const l=await (await fetch(`/api/probe/log?job=${job}&offset=${off}`)).json();
+  if(l.lines.length){$('#p-out').textContent+=l.lines.join('\n')+'\n';$('#p-out').scrollTop=$('#p-out').scrollHeight;off=l.offset}
+  if(l.done){clearInterval(probeTimer);probeJob=null;$('#p-stop').style.display='none';bs.forEach(b=>b.disabled=false);
+   $('#p-status').textContent=l.rc===0?'✅ เสร็จ พบอุปกรณ์ที่อ่านได้ คัดลอกบล็อก devices: ท้าย console ไปใส่ config.yaml':(l.rc===3?'⏹ หยุดแล้ว':'⚠ เสร็จ ยังไม่พบอุปกรณ์ที่อ่านได้ ดูบรรทัด ERROR ใน console')}}catch(e){}},800)}
+async function probe(scan){const port=$('#p-port').value.trim();$('#p-out').textContent='';$('#p-status').textContent=scan?'กำลังสแกนทั้งวง…':'กำลังตรวจ…';
+ const body={host:scan?'':$('#p-host').value.trim(),serial:$('#p-serial').value.trim()||null,rtu:scan?null:($('#p-rtu').value.trim()||null),baud:+$('#p-baud').value||9600,maps:$('#p-maps').value.trim()||null,units:$('#p-units').value.trim()||null,timeout:+$('#p-timeout').value||3,scan:scan?($('#p-scan').value.trim()||'auto'):null,ports:(!scan&&port)?port:null};
+ try{const r=await fetch('/api/probe/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json();
+  if(!j.job){$('#p-out').textContent=j.detail||JSON.stringify(j);$('#p-status').textContent='ผิดพลาด';return}
+  if(j.already_running){$('#p-status').textContent='มีการตรวจก่อนหน้ายังทำงานอยู่ แสดงผลของรอบนั้น (กด "หยุด" เพื่อยกเลิกแล้วเริ่มใหม่)';followJob(j.job,0);return}
+  followJob(j.job,0)}
+ catch(e){$('#p-out').textContent='ผิดพลาด: '+e}}
+async function probeStop(){if(!probeJob)return;await fetch('/api/probe/cancel?job='+probeJob,{method:'POST'});$('#p-status').textContent='กำลังหยุด…'}
 async function ack(dev,code){const n=document.getElementById(`n-${dev}-${code}`);const note=n?n.value:'';
  await fetch('/api/alarms/ack',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({device_id:dev,code,note,by:note})});await load()}
 
@@ -152,7 +255,10 @@ function go(v,p){view=v;param=p||null;location.hash='#'+v+(p?'/'+encodeURICompon
 function render(){if(!S){$('#main').innerHTML='<div class="empty">กำลังโหลด…</div>';return}
  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===view||(view==='site'&&a.dataset.v==='sites')||(view==='device'&&a.dataset.v==='devices')));
  const f={overview:vOverview,sites:vSites,site:()=>vSite(param),service:vService,devices:vDevices,device:()=>vDevice(param),probe:vProbe}[view]||vOverview;
- if(view==='probe'&&$('#p-out'))return;$('#main').innerHTML=f()}
+ if(view==='probe'&&$('#p-out'))return;$('#main').innerHTML=f();if(view==='probe')loadNet();
+ if(view==='overview')loadChart('chart-all','hours='+hrs('all'),POWER_SERIES);
+ if(view==='site'&&param){loadChart('chart-site','site='+encodeURIComponent(param)+'&hours='+hrs('site'),POWER_SERIES);loadChart('chart-site-soc','site='+encodeURIComponent(param)+'&hours='+hrs('site'),SOC_SERIES,{h:160})}
+ if(view==='device'&&param)loadChart('chart-dev','device='+encodeURIComponent(param)+'&hours='+hrs('dev'),POWER_SERIES)}
 async function load(){try{const r=await fetch('/api/state');S=await r.json();$('#status').textContent='อัปเดต '+new Date(S.now).toLocaleTimeString('th-TH')+' · อุปกรณ์ '+S.totals.online+'/'+S.totals.devices+' ออนไลน์'+(S.totals.alarms?' · ⚠ '+S.totals.alarms:'');render()}catch(e){$('#status').textContent='ต่อ relay ไม่ได้: '+e}}
 function fromHash(){const h=location.hash.slice(1).split('/');view=h[0]||'overview';param=h[1]?decodeURIComponent(h[1]):null;render()}
 window.addEventListener('hashchange',fromHash);fromHash();load();timer=setInterval(load,10000);

@@ -81,12 +81,61 @@ class RelayConfig:
     devices: list[DeviceConfig] = field(default_factory=list)
     outputs: list[OutputConfig] = field(default_factory=list)
     sites: list[SiteConfig] = field(default_factory=list)
+    path: str | None = None            # config.yaml location (set by load); sites edited in the UI go to sites.yaml next to it
 
     def site_of(self, device_id: str) -> SiteConfig | None:
         for s in self.sites:
             if device_id in s.devices:
                 return s
         return None
+
+    # ---- sites persisted from the web UI ------------------------------------
+    @property
+    def sites_file(self) -> Path | None:
+        return Path(self.path).with_name("sites.yaml") if self.path else None
+
+    def apply_sites_override(self) -> None:
+        """sites.yaml (written by the web UI) replaces the `sites:` block of config.yaml when present."""
+        f = self.sites_file
+        if f and f.exists():
+            raw = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            self.sites = [SiteConfig(**{k: v for k, v in s.items() if k in SiteConfig.__dataclass_fields__}) for s in raw.get("sites", []) or []]
+
+    def save_sites(self) -> Path:
+        f = self.sites_file
+        if f is None:
+            raise RuntimeError("config has no path; cannot persist sites")
+        data = {"sites": [{"id": s.id, "name": s.name, "customer": s.customer, "phone": s.phone, "address": s.address,
+                           "note": s.note, "devices": list(s.devices)} for s in self.sites]}
+        f.write_text("# แก้ไขจาก Web UI (หน้า ไซต์/ลูกค้า) - ไฟล์นี้แทนที่ sites: ใน config.yaml\n"
+                     + yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        return f
+
+    def upsert_site(self, data: dict[str, Any]) -> SiteConfig:
+        sid = str(data.get("id") or "").strip()
+        if not sid:
+            raise ValueError("site id required")
+        site = next((s for s in self.sites if s.id == sid), None)
+        if site is None:
+            site = SiteConfig(id=sid)
+            self.sites.append(site)
+        for k in ("name", "customer", "phone", "address", "note"):
+            if k in data and data[k] is not None:
+                setattr(site, k, str(data[k]))
+        if "devices" in data and data["devices"] is not None:
+            wanted = [str(d) for d in data["devices"]]
+            for other in self.sites:               # a device belongs to one site only
+                if other is not site:
+                    other.devices = [d for d in other.devices if d not in wanted]
+            site.devices = wanted
+        if not site.name:
+            site.name = sid
+        return site
+
+    def delete_site(self, sid: str) -> bool:
+        before = len(self.sites)
+        self.sites = [s for s in self.sites if s.id != sid]
+        return len(self.sites) < before
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> RelayConfig:
@@ -148,4 +197,7 @@ class RelayConfig:
     @classmethod
     def load(cls, path: str | Path) -> RelayConfig:
         with open(path, encoding="utf-8") as fh:
-            return cls.from_dict(yaml.safe_load(fh) or {})
+            cfg = cls.from_dict(yaml.safe_load(fh) or {})
+        cfg.path = str(Path(path).resolve())
+        cfg.apply_sites_override()
+        return cfg

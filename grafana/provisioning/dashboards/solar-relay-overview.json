@@ -18,6 +18,24 @@
   "templating": {
     "list": [
       {
+        "name": "site",
+        "label": "Site / ลูกค้า",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influx-solar"
+        },
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: v.defaultBucket, tag: \"site\", predicate: (r) => r._measurement == \"inverter\", start: -30d)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
         "name": "device",
         "label": "Device",
         "type": "query",
@@ -102,7 +120,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"pv_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"pv_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -159,7 +177,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"load_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"load_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -216,7 +234,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"grid_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"grid_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -281,7 +299,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"batt_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"batt_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -338,7 +356,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"soc\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> mean()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"soc\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> mean()",
           "refId": "A"
         }
       ],
@@ -402,7 +420,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"energy_day_kwh\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"energy_day_kwh\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -458,7 +476,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"alarm_count\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"alarm_count\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -519,7 +537,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"online\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: 1 - r._value}))\n  |> group()\n  |> sum()",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"online\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> map(fn: (r) => ({r with _value: 1 - r._value}))\n  |> group()\n  |> sum()",
           "refId": "A"
         }
       ],
@@ -579,7 +597,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\")\n  |> filter(fn: (r) => contains(value: r._field, set: [\"pv_w\", \"ac_w\", \"load_w\", \"grid_w\", \"batt_w\", \"soc\", \"energy_day_kwh\", \"temp_c\", \"online\", \"alarm_count\", \"status\"]))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"device_id\", \"brand\", \"source\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"inverter\")\n  |> filter(fn: (r) => contains(value: r._field, set: [\"pv_w\", \"ac_w\", \"load_w\", \"grid_w\", \"batt_w\", \"soc\", \"energy_day_kwh\", \"temp_c\", \"online\", \"alarm_count\", \"status\"]))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> last()\n  |> pivot(rowKey: [\"device_id\", \"brand\", \"source\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"device_id\"])",
           "refId": "A"
         }
       ],
@@ -756,7 +774,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"pv_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" pv\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"pv_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" pv\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
           "refId": "A"
         },
         {
@@ -764,7 +782,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"load_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" load\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"load_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" load\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
           "refId": "B"
         },
         {
@@ -772,7 +790,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"grid_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" grid\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"grid_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" grid\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
           "refId": "C"
         },
         {
@@ -780,7 +798,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"batt_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" batt\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"batt_w\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with device_id: r.device_id + \" batt\"}))\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
           "refId": "D"
         }
       ],
@@ -906,7 +924,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"soc\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"soc\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
           "refId": "A"
         }
       ],
@@ -987,7 +1005,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"energy_day_kwh\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: 1d, fn: max, createEmpty: false, timeSrc: \"_start\")\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and r._field == \"energy_day_kwh\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: 1d, fn: max, createEmpty: false, timeSrc: \"_start\")\n  |> keep(columns: [\"_time\", \"_value\", \"device_id\"])",
           "refId": "A"
         }
       ],
@@ -1038,7 +1056,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"alarm\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> pivot(rowKey: [\"_time\", \"device_id\", \"brand\", \"code\", \"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"alarm\")\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> pivot(rowKey: [\"_time\", \"device_id\", \"brand\", \"code\", \"category\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)",
           "refId": "A"
         }
       ],
@@ -1146,7 +1164,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and (r._field =~ /^pv[0-9]+_w$/))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with series: r.device_id + \" \" + r._field}))\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and (r._field =~ /^pv[0-9]+_w$/))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with series: r.device_id + \" \" + r._field}))\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
           "refId": "A"
         }
       ],
@@ -1211,7 +1229,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and (r._field == \"temp_c\" or r._field == \"batt_temp_c\"))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with series: r.device_id + \" \" + r._field}))\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and (r._field == \"temp_c\" or r._field == \"batt_temp_c\"))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with series: r.device_id + \" \" + r._field}))\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
           "refId": "A"
         }
       ],
@@ -1276,7 +1294,7 @@
             "type": "influxdb",
             "uid": "influx-solar"
           },
-          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and (r._field == \"grid_v\" or r._field == \"grid_hz\"))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with series: r.device_id + \" \" + r._field}))\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
+          "query": "from(bucket: v.defaultBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"inverter\" and (r._field == \"grid_v\" or r._field == \"grid_hz\"))\n  |> filter(fn: (r) => r.device_id =~ /^${device:regex}$/ and r.brand =~ /^${brand:regex}$/ and r.site =~ /^${site:regex}$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with series: r.device_id + \" \" + r._field}))\n  |> keep(columns: [\"_time\", \"_value\", \"series\"])",
           "refId": "A"
         }
       ],

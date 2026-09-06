@@ -56,6 +56,52 @@ def test_cli_requires_target(capsys):
         probe.main([])
 
 
+def test_sweep_and_arp_helpers():
+    with socket.socket() as tmp:                 # a port that is free right now -> closed during the sweep
+        tmp.bind(("127.0.0.1", 0))
+        closed = tmp.getsockname()[1]
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+        found = probe.sweep("127.0.0.1/32", ports=(port, closed), timeout=0.5)
+    assert found == {"127.0.0.1": [port]}
+    assert probe.sweep("127.0.0.1/32", ports=(1,), timeout=0.2) == {}
+    win = "Interface: 192.168.1.40 --- 0xe\n  192.168.1.1   14-11-5d-49-63-98   dynamic\n  192.168.1.255  ff-ff-ff-ff-ff-ff static\n  224.0.0.22  01-00-5e-00-00-16 static\n"
+    lin = "? (192.168.1.33) at 22:87:12:48:be:65 [ether] on wlan0\n? (10.0.0.9) at aa:bb:cc:dd:ee:ff [ether] on eth0\n"
+    assert probe.parse_arp(win, "192.168.1.0/24") == {"192.168.1.1": "14:11:5d:49:63:98"}
+    assert probe.parse_arp(lin, "192.168.1.0/24") == {"192.168.1.33": "22:87:12:48:be:65"}
+    assert probe.local_subnet() is None or probe.local_subnet().endswith("/24")
+
+
+def test_scan_end_to_end_finds_simulated_inverter(capsys):
+    pytest.importorskip("pymodbus")
+    from pymodbus.server import ModbusTcpServer
+
+    from tests.test_modbus_integration import _free_port, _huawei_fill, _server_context, _slave_context
+
+    async def scenario() -> int:
+        slave = _slave_context()
+        _huawei_fill(slave)
+        port = _free_port()
+        server = ModbusTcpServer(_server_context(1, slave), address=("127.0.0.1", port))
+        task = asyncio.create_task(server.serve_forever())
+        await asyncio.sleep(0.3)
+        try:
+            args = probe.argparse.Namespace(host=None, port=None, serial=None, rtu=None, baud=9600, maps="huawei,solis",
+                                            units="1", timeout=1.0, json=False, scan="127.0.0.1/32", ports=str(port))
+            return await probe.run(args)
+        finally:
+            await server.shutdown()
+            task.cancel()
+
+    rc = asyncio.run(scenario())
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "sweeping 127.0.0.1/32" in out and "127.0.0.1        open:" in out
+    assert "* modbus:huawei" in out and "host: 127.0.0.1" in out and "map: huawei" in out
+
+
 def test_probe_end_to_end_picks_huawei_on_simulated_inverter(capsys):
     """Spin up the pymodbus simulator from test_modbus_integration with Huawei registers and let the
     full CLI scan it: SunSpec must not match, brand map 'huawei' must win, snippet must be printed."""

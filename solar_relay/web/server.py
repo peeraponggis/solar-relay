@@ -42,6 +42,16 @@ class AckBody(_BaseModel):
     by: str = ""
 
 
+class SiteBody(_BaseModel):
+    id: str
+    name: str | None = None
+    customer: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    note: str | None = None
+    devices: list[str] | None = None
+
+
 class ProbeBody(_BaseModel):
     host: str = ""
     serial: str | None = None
@@ -50,6 +60,8 @@ class ProbeBody(_BaseModel):
     maps: str | None = None
     units: str | None = None
     timeout: float = 3.0
+    scan: str | None = None        # CIDR to sweep, or "auto" for the relay host's /24
+    ports: str | None = None
 
 
 def create_app(state: State) -> Any:
@@ -76,6 +88,32 @@ def create_app(state: State) -> Any:
     async def api_sites() -> Any:
         return JSONResponse(state.snapshot()["sites"])
 
+    @app.post("/api/sites")
+    async def api_site_save(body: SiteBody) -> dict[str, Any]:
+        try:
+            return state.save_site({k: v for k, v in body.__dict__.items() if not k.startswith("_")})
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.delete("/api/sites/{site_id}")
+    async def api_site_delete(site_id: str) -> dict[str, Any]:
+        if not state.remove_site(site_id):
+            raise HTTPException(404, "unknown site")
+        return {"ok": True}
+
+    @app.get("/api/history")
+    async def api_history(site: str | None = None, device: str | None = None, hours: float = 24, points: int = 240) -> Any:
+        if device:
+            devs = [device]
+        elif site:
+            s = next((x for x in state.snapshot()["sites"] if x["id"] == site), None)
+            if s is None:
+                raise HTTPException(404, "unknown site")
+            devs = [d["device_id"] for d in s["devices"]]
+        else:
+            devs = state.configured_devices() or sorted(state.readings)
+        return JSONResponse(state.history_series(devs, hours=min(max(hours, 0.5), 48), points=min(max(points, 24), 600)))
+
     @app.get("/api/devices/{device_id}")
     async def api_device(device_id: str) -> Any:
         if device_id not in state.readings and device_id not in state.configured_devices():
@@ -99,19 +137,120 @@ def create_app(state: State) -> Any:
         from ..alarm_catalog import lookup
         return JSONResponse(lookup(code, message) or {})
 
+    def _probe_args(body: ProbeBody) -> Any:
+        import argparse
+        if not body.host and not body.rtu and not body.scan:
+            raise HTTPException(400, "host, rtu or scan required")
+        port = None
+        if body.host and body.ports:            # single-host probe: first port forces the Modbus port (e.g. 6607)
+            try:
+                port = int(str(body.ports).split(",")[0])
+            except ValueError:
+                raise HTTPException(400, "ports must be numeric") from None
+        return argparse.Namespace(host=body.host or None, port=port, serial=body.serial or None, rtu=body.rtu or None,
+                                  baud=body.baud, maps=body.maps or None, units=body.units or None, timeout=body.timeout, json=False,
+                                  scan=body.scan or None, ports=body.ports or None)
+
     @app.post("/api/probe")
     async def api_probe(body: ProbeBody) -> dict[str, Any]:
-        import argparse
-
+        """Synchronous probe (blocks until done)."""
         from ..probe import run as probe_run
-        if not body.host and not body.rtu:
-            raise HTTPException(400, "host or rtu required")
-        args = argparse.Namespace(host=body.host or None, port=None, serial=body.serial or None, rtu=body.rtu or None,
-                                  baud=body.baud, maps=body.maps or None, units=body.units or None, timeout=body.timeout, json=False)
+        args = _probe_args(body)
         buf = io.StringIO()
         with redirect_stdout(buf):
-            rc = await asyncio.wait_for(probe_run(args), timeout=240)
+            rc = await asyncio.wait_for(probe_run(args), timeout=600)
         return {"rc": rc, "output": buf.getvalue()}
+
+    # ---- live console: start a probe job, poll its log -------------------------------------------
+    jobs: dict[str, dict[str, Any]] = {}
+
+    class _LineSink(io.TextIOBase):
+        def __init__(self, job: dict[str, Any]):
+            super().__init__()
+            self.job, self._buf = job, ""
+
+        def write(self, s: str) -> int:  # type: ignore[override]
+            self._buf += s
+            while "\n" in self._buf:
+                line, self._buf = self._buf.split("\n", 1)
+                self.job["lines"].append(line)
+            return len(s)
+
+        def flush(self) -> None:
+            if self._buf:
+                self.job["lines"].append(self._buf)
+                self._buf = ""
+
+    def _run_job(job: dict[str, Any], args: Any) -> None:
+        """Runs in its own thread + event loop so the job survives the request that started it."""
+        from ..probe import run as probe_run
+
+        async def _with_timeout() -> int:
+            return await asyncio.wait_for(probe_run(args), timeout=900)
+
+        sink = _LineSink(job)
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            task = loop.create_task(_with_timeout())
+            job["cancel"] = lambda: loop.call_soon_threadsafe(task.cancel)
+            with redirect_stdout(sink):
+                job["rc"] = loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            job["lines"].append("!! ยกเลิกโดยผู้ใช้")
+            job["rc"] = 3
+        except BaseException as exc:  # noqa: BLE001 - report timeouts too
+            job["lines"].append(f"!! error: {exc!r}")
+            job["rc"] = 2
+        finally:
+            sink.flush()
+            job["done"] = True
+            job.pop("cancel", None)
+            loop.close()
+
+    @app.post("/api/probe/start")
+    async def api_probe_start(body: ProbeBody) -> dict[str, Any]:
+        import uuid
+        args = _probe_args(body)
+        running = next((j for j in jobs.values() if not j["done"]), None)
+        if running:
+            return {"job": running["id"], "already_running": True}
+        import threading
+        job_id = uuid.uuid4().hex[:8]
+        job: dict[str, Any] = {"id": job_id, "lines": [], "done": False, "rc": None}
+        jobs.clear()
+        jobs[job_id] = job
+        threading.Thread(target=_run_job, args=(job, args), name=f"probe-{job_id}", daemon=True).start()
+        return {"job": job_id}
+
+    @app.post("/api/probe/cancel")
+    async def api_probe_cancel(job: str) -> dict[str, Any]:
+        j = jobs.get(job)
+        if j is None:
+            raise HTTPException(404, "unknown job")
+        cancel = j.get("cancel")
+        if j["done"] or cancel is None:
+            return {"ok": False, "done": j["done"]}
+        cancel()
+        return {"ok": True}
+
+    @app.get("/api/probe/log")
+    async def api_probe_log(job: str, offset: int = 0) -> dict[str, Any]:
+        j = jobs.get(job)
+        if j is None:
+            raise HTTPException(404, "unknown job")
+        return {"job": job, "lines": j["lines"][offset:], "offset": len(j["lines"]), "done": j["done"], "rc": j["rc"]}
+
+    # ---- network info -------------------------------------------------------------------------------
+    @app.get("/api/net")
+    async def api_net() -> Any:
+        from ..netinfo import local_info
+        return JSONResponse(await asyncio.get_running_loop().run_in_executor(None, local_info))
+
+    @app.get("/api/net/discover")
+    async def api_net_discover(cidr: str | None = None, online: bool = True) -> Any:
+        from ..netinfo import discover
+        return JSONResponse(await asyncio.get_running_loop().run_in_executor(None, lambda: discover(cidr or None, online)))
 
     return app
 

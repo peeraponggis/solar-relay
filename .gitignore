@@ -8,6 +8,7 @@ dist/
 venv/
 .env
 config.yaml
+sites.yaml
 config/
 !config.example.yaml
 grafana/data/

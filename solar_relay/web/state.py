@@ -24,6 +24,8 @@ class State:
         self.readings: dict[str, Reading] = {}
         self.active: dict[tuple[str, str], dict[str, Any]] = {}     # (device_id, code) -> alarm record
         self.history: deque[dict[str, Any]] = deque(maxlen=history_len)
+        self.series: dict[str, deque[tuple[float, dict[str, float | None]]]] = {}   # device -> (epoch, metrics) for charts
+        self.series_len = 6000                                                        # ~33 h at 20 s
         self.started = datetime.now(timezone.utc)
 
     # ---- config ---------------------------------------------------------
@@ -54,6 +56,9 @@ class State:
                     self._apply_alarm(reading.device_id, a, now)
                 return
             self.readings[reading.device_id] = reading
+            if reading.online:
+                pt = {k: getattr(reading, k) for k in ("pv_w", "load_w", "grid_w", "batt_w", "soc", "energy_day_kwh")}
+                self.series.setdefault(reading.device_id, deque(maxlen=self.series_len)).append((reading.ts.timestamp(), pt))
             seen: set[str] = set()
             for a in reading.alarms:
                 seen.add(a.code)
@@ -159,6 +164,66 @@ class State:
                 "active_alarms": [self._with_site(a) for a in active],
                 "history": [self._with_site(h) for h in list(self.history)[:300]],
             }
+
+    # ---- charts ---------------------------------------------------------
+    def history_series(self, device_ids: list[str], hours: float = 24, points: int = 240) -> dict[str, Any]:
+        """Aggregate the per-device series of ``device_ids`` into ``points`` time buckets (sum of power, mean SOC)."""
+        import math
+        now = datetime.now(timezone.utc).timestamp()
+        start = now - hours * 3600
+        step = max((now - start) / points, 1.0)
+        buckets: list[dict[str, Any]] = [{"t": start + i * step, "n": 0, "pv_w": 0.0, "load_w": 0.0, "grid_w": 0.0, "batt_w": 0.0, "soc": 0.0, "soc_n": 0,
+                                          "_dev": {}} for i in range(points)]
+        with self._lock:
+            for dev in device_ids:
+                for ts, pt in self.series.get(dev, ()):
+                    if ts < start:
+                        continue
+                    i = min(int((ts - start) / step), points - 1)
+                    b = buckets[i]
+                    slot = b["_dev"].setdefault(dev, {"n": 0, "pv_w": 0.0, "load_w": 0.0, "grid_w": 0.0, "batt_w": 0.0, "soc": None})
+                    slot["n"] += 1
+                    for k in ("pv_w", "load_w", "grid_w", "batt_w"):
+                        slot[k] += float(pt.get(k) or 0.0)
+                    if pt.get("soc") is not None:
+                        slot["soc"] = float(pt["soc"])
+        out = []
+        for b in buckets:
+            devs = b.pop("_dev")
+            if not devs:
+                out.append({"t": b["t"], "pv_w": None, "load_w": None, "grid_w": None, "batt_w": None, "soc": None})
+                continue
+            row = {"t": b["t"]}
+            for k in ("pv_w", "load_w", "grid_w", "batt_w"):
+                row[k] = round(sum(d[k] / d["n"] for d in devs.values()), 1)     # mean per device, summed over devices
+            socs = [d["soc"] for d in devs.values() if d["soc"] is not None]
+            row["soc"] = round(sum(socs) / len(socs), 1) if socs else None
+            out.append(row)
+        energy = {}
+        with self._lock:
+            for dev in device_ids:
+                r = self.readings.get(dev)
+                if r and r.energy_day_kwh is not None:
+                    energy[dev] = r.energy_day_kwh
+        return {"start": start, "end": now, "step_s": step, "points": out, "energy_day_kwh": round(math.fsum(energy.values()), 2), "devices": device_ids}
+
+    # ---- site editing (persisted to sites.yaml next to config.yaml) ------
+    def save_site(self, data: dict[str, Any]) -> dict[str, Any]:
+        if self.cfg is None:
+            raise RuntimeError("no config attached")
+        with self._lock:
+            site = self.cfg.upsert_site(data)
+            path = self.cfg.save_sites() if self.cfg.path else None
+        return {"ok": True, "site": asdict(site), "saved_to": str(path) if path else None}
+
+    def remove_site(self, sid: str) -> bool:
+        if self.cfg is None:
+            return False
+        with self._lock:
+            ok = self.cfg.delete_site(sid)
+            if ok and self.cfg.path:
+                self.cfg.save_sites()
+        return ok
 
     def _with_site(self, rec: dict[str, Any]) -> dict[str, Any]:
         s = self.site_for(rec["device_id"])

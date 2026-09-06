@@ -4,6 +4,8 @@
     python -m solar_relay.probe 192.168.1.50 --serial 2712345678   # Solarman logger (tcp/8899)
     python -m solar_relay.probe --rtu COM3 --baud 9600      # RS485 (Solis / Deye / Growatt direct)
     python -m solar_relay.probe 192.168.1.30 --maps huawei,solis --units 1,2,3
+    python -m solar_relay.probe --scan                      # sweep this PC's /24 for Modbus/Solarman ports, probe every hit
+    python -m solar_relay.probe --scan 192.168.10.0/24 --ports 502,6607
 
 For every candidate it prints the decoded key values (pv_w, ac_w, grid_w, batt_w, soc, energy_day_kwh,
 status) and a plausibility score, then a ready-to-paste `devices:` entry for the best match.
@@ -12,8 +14,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import concurrent.futures as cf
+import ipaddress
 import json
+import re
 import socket
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,6 +41,7 @@ class Candidate:
     values: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     error: str | None = None
+    host: str | None = None       # filled by --scan (one probe run covers many hosts)
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +87,61 @@ def tcp_open(host: str, port: int, timeout: float = 1.5) -> bool:
             return True
     except OSError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# subnet sweep (--scan)
+# ---------------------------------------------------------------------------
+def local_ip() -> str | None:
+    """Primary IPv4 of this machine (the one that would route to the internet / LAN)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))      # no packet is sent for UDP connect
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
+def local_subnet() -> str | None:
+    ip = local_ip()
+    return str(ipaddress.ip_network(f"{ip}/24", strict=False)) if ip else None
+
+
+def sweep(cidr: str, ports: tuple[int, ...] = (502, 1502, 6607, 8899), timeout: float = 0.6, workers: int = 200) -> dict[str, list[int]]:
+    """TCP-connect every host in ``cidr`` on ``ports``; returns {ip: [open ports]} sorted by address."""
+    net = ipaddress.ip_network(cidr, strict=False)
+    hosts = [str(h) for h in (net.hosts() if net.num_addresses > 1 else [net.network_address])]
+    jobs = [(h, p) for h in hosts for p in ports]
+    found: dict[str, list[int]] = {}
+    with cf.ThreadPoolExecutor(min(workers, max(1, len(jobs)))) as ex:
+        for (h, p), ok in zip(jobs, ex.map(lambda j: tcp_open(j[0], j[1], timeout), jobs)):
+            if ok:
+                found.setdefault(h, []).append(p)
+    return {ip: sorted(ps) for ip, ps in sorted(found.items(), key=lambda kv: ipaddress.ip_address(kv[0]))}
+
+
+_ARP_RE = re.compile(r"(\d+\.\d+\.\d+\.\d+)\)?\s+(?:at\s+)?([0-9a-fA-F]{2}(?:[-:][0-9a-fA-F]{2}){5})")
+
+
+def parse_arp(text: str, cidr: str) -> dict[str, str]:
+    """ip -> mac for entries inside cidr (works on `arp -a` output from Windows, Linux and macOS)."""
+    net = ipaddress.ip_network(cidr, strict=False)
+    out: dict[str, str] = {}
+    for ip, mac in _ARP_RE.findall(text):
+        try:
+            if ipaddress.ip_address(ip) in net and not ip.endswith(".255") and not mac.lower().startswith(("ff-ff", "ff:ff", "01-00-5e", "01:00:5e")):
+                out[ip] = mac.lower().replace("-", ":")
+        except ValueError:
+            continue
+    return out
+
+
+def arp_neighbours(cidr: str) -> dict[str, str]:
+    try:
+        text = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:  # noqa: BLE001
+        return {}
+    return parse_arp(text, cidr)
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +243,7 @@ async def probe_rtu(port: str, baud: int, maps: list[str], units: list[int], tim
 
 # ---------------------------------------------------------------------------
 def config_snippet(host: str | None, c: Candidate, serial: int | None, rtu: str | None, baud: int) -> str:
+    host = c.host or host
     dev_id = f"{c.kind.split(':')[-1]}-{(host or rtu or 'dev').replace('.', '-').replace('/', '')}"
     if c.kind == "sunspec":
         opts = f"{{host: {host}, port: {c.port}, unit: {c.unit}}}"
@@ -197,43 +260,86 @@ def config_snippet(host: str | None, c: Candidate, serial: int | None, rtu: str 
             f"    options: {{map: {key}, host: {host}, port: {c.port}, unit: {c.unit}, max_block: 60}}")
 
 
+async def probe_host(host: str, open_ports: list[int], args: argparse.Namespace, maps: list[str], units: list[int]) -> list[Candidate]:
+    """Probe one host on its open ports: Solarman (if serial), SunSpec, then every brand map."""
+    results: list[Candidate] = []
+    if args.serial and (8899 in open_ports or args.port == 8899):
+        print(f"-- {host}: Solarman V5 logger probe")
+        results += await probe_solarman(host, 8899, int(args.serial), maps, units[0], args.timeout)
+    for port in ([args.port] if args.port else [p for p in open_ports if p != 8899]):
+        if port == 6607:
+            # Huawei-only port (inverter Wi-Fi hotspot / old SDongle): no SunSpec there, unit 0 on the hotspot, 1 via dongle
+            hw_maps = [m for m in maps if m == "huawei"] or ["huawei"]
+            hw_units = units if args.units else [0, 1]
+            print(f"-- {host}:{port} Huawei port -> skip SunSpec, map huawei units {hw_units} (ปิดแอป SUN2000 ก่อน inverter รับ Modbus ได้ทีละ 1 client)")
+            results += await probe_modbus_maps(host, port, hw_maps, hw_units, args.timeout)
+            continue
+        print(f"-- {host}:{port} SunSpec scan units {SUNSPEC_UNITS}")
+        results += await probe_sunspec(host, port, SUNSPEC_UNITS, args.timeout)
+        print(f"-- {host}:{port} brand maps {maps} units {units}")
+        results += await probe_modbus_maps(host, port, maps, units, args.timeout)
+    if 8899 in open_ports and not args.serial:
+        print(f"!! {host}: port 8899 open but no --serial given: Solarman loggers need the 10-digit serial printed on the stick "
+              "(GoodWe uses 8899/UDP -> try adapter: goodwe instead)")
+    for c in results:
+        c.host = host
+    return results
+
+
 async def run(args: argparse.Namespace) -> int:
     maps = args.maps.split(",") if args.maps else list(MAPS)
     units = [int(u) for u in args.units.split(",")] if args.units else DEFAULT_UNITS
+    scan = getattr(args, "scan", None)
     results: list[Candidate] = []
 
     if args.rtu:
         print(f"== RS485 {args.rtu} @ {args.baud} 8N1, maps={maps}, units={units}")
         results += await probe_rtu(args.rtu, args.baud, maps, units, args.timeout)
+    elif scan:
+        cidr = scan if scan not in ("auto", "", True) else local_subnet()
+        if not cidr:
+            print("!! cannot determine this PC's subnet, give one: --scan 192.168.1.0/24")
+            return 2
+        ports = tuple(int(p) for p in str(getattr(args, "ports", "") or "").split(",") if p) or tuple(PORTS)
+        print(f"== sweeping {cidr} on ports {list(ports)} (this PC: {local_ip()})")
+        found = await asyncio.get_running_loop().run_in_executor(None, lambda: sweep(cidr, ports, min(args.timeout, 1.0)))
+        if found:
+            for ip, ps in found.items():
+                print(f"   {ip:16s} open: " + ", ".join(f"{p} ({PORTS.get(p, '?')})" for p in ps))
+        else:
+            print("   no host answers on those ports")
+        neigh = arp_neighbours(cidr)
+        silent = [ip for ip in neigh if ip not in found and ip != local_ip()]
+        if silent:
+            print(f"-- hosts alive on the LAN but with none of those ports open: {', '.join(f'{ip} ({neigh[ip]})' for ip in silent)}")
+            print("   ถ้า inverter/dongle เป็นหนึ่งในนี้ แสดงว่ายังไม่เปิด Modbus TCP ที่ตัวอุปกรณ์ (Huawei SDongle ปิดเป็นค่าเริ่มต้น -> แอป SUN2000 > "
+                  "Dongle parameter > Modbus TCP = Enable) หรือเป็น Solarman stick ที่ต้องใช้ --serial")
+        for ip, ps in found.items():
+            results += await probe_host(ip, ps, args, maps, units)
     else:
         host = args.host
-        open_ports = [p for p in PORTS if tcp_open(host, p)]
+        open_ports = [p for p in PORTS if tcp_open(host, p, min(max(args.timeout, 1.5), 8.0))]   # inverter Wi-Fi APs answer slowly
         print(f"== {host}: open TCP ports: " + (", ".join(f"{p} ({PORTS[p]})" for p in open_ports) or "none of 502/1502/6607/8899"))
-        if args.serial and (8899 in open_ports or args.port == 8899):
-            print("-- Solarman V5 logger probe")
-            results += await probe_solarman(host, 8899, int(args.serial), maps, units[0], args.timeout)
-        for port in ([args.port] if args.port else [p for p in open_ports if p != 8899]):
-            print(f"-- SunSpec scan on {port} units {SUNSPEC_UNITS}")
-            results += await probe_sunspec(host, port, SUNSPEC_UNITS, args.timeout)
-            print(f"-- brand maps on {port}: {maps} units {units}")
-            results += await probe_modbus_maps(host, port, maps, units, args.timeout)
-        if 8899 in open_ports and not args.serial:
-            print("!! port 8899 open but no --serial given: Solarman loggers need the 10-digit serial printed on the stick "
-                  "(GoodWe uses 8899/UDP -> try adapter: goodwe instead)")
+        results += await probe_host(host, open_ports, args, maps, units)
 
     results.sort(key=lambda c: c.score, reverse=True)
     print("\n== results (best first)")
     for c in results:
-        where = f"unit {c.unit}" + (f" port {c.port}" if c.port else "")
+        where = (f"{c.host} " if scan and c.host else "") + f"unit {c.unit}" + (f" port {c.port}" if c.port else "")
         if c.error:
             print(f"  x {c.kind:18s} {where:16s} ERROR {c.error}")
         else:
             print(f"  {'*' if c.score >= 8 else ' '} {c.kind:18s} {where:16s} score {c.score:3d}  {', '.join(c.notes)}")
     good = [c for c in results if not c.error and c.score >= 8]
     if good:
-        best = good[0]
         print("\n== suggested config.yaml entry (verify grid/battery sign with a known import/export moment!)\ndevices:")
-        print(config_snippet(args.host, best, int(args.serial) if args.serial else None, args.rtu, args.baud))
+        shown: set[str | None] = set()
+        for c in good:                      # with --scan: one entry per host
+            if c.host in shown:
+                continue
+            shown.add(c.host)
+            print(config_snippet(args.host, c, int(args.serial) if args.serial else None, args.rtu, args.baud))
+        best = good[0]
         if args.json:
             print(json.dumps({"best": best.__dict__, "all": [c.__dict__ for c in results]}, ensure_ascii=False, default=str, indent=2))
         return 0
@@ -257,9 +363,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--units", help="comma list of unit ids (default 1,2,3,247)")
     p.add_argument("--timeout", type=float, default=3.0)
     p.add_argument("--json", action="store_true")
+    p.add_argument("--scan", nargs="?", const="auto", metavar="CIDR",
+                   help="sweep a subnet (default: this PC's /24) for open Modbus/Solarman ports and probe every hit")
+    p.add_argument("--ports", help="comma list of ports for --scan (default 502,1502,6607,8899)")
     args = p.parse_args(argv)
-    if not args.host and not args.rtu:
-        p.error("give a host IP or --rtu <serial port>")
+    if not args.host and not args.rtu and not args.scan:
+        p.error("give a host IP, --rtu <serial port> or --scan [CIDR]")
     return asyncio.run(run(args))
 
 

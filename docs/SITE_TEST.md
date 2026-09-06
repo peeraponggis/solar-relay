@@ -11,13 +11,16 @@
 
 ## ขั้นตอนต่ออุปกรณ์
 
-1. **สแกน** ให้เครื่องมือหาวิธีต่อและ map ที่ถูกให้
+1. **สแกน** ให้เครื่องมือหาวิธีต่อและ map ที่ถูกให้ ถ้ายังไม่รู้ IP ให้กวาดทั้งวงก่อน (เครื่องต้องอยู่ Wi-Fi/LAN วงเดียวกับ inverter)
    ```bash
+   python -m solar_relay.probe --scan                    # กวาดวง /24 ของเครื่องนี้ หา port 502/1502/6607/8899 แล้วตรวจทุกตัวที่เจอ
+   python -m solar_relay.probe --scan 192.168.10.0/24    # ระบุวงเอง
    python -m solar_relay.probe 192.168.1.30
    python -m solar_relay.probe 192.168.1.50 --serial 2712345678     # Solarman stick (Deye / Sofar / Solis DLS-W)
    python -m solar_relay.probe --rtu COM3 --baud 9600 --maps solis  # RS485 ตรง
    ```
    ผลลัพธ์บรรทัดที่มี `*` และ score สูงสุดคือคำตอบ ท้ายผลมี `devices:` ให้คัดลอกลง config.yaml
+   ถ้า `--scan` เจอเครื่องใน ARP แต่ไม่มี port เปิด แปลว่าอุปกรณ์อยู่ในวงแต่ **ยังไม่เปิด Modbus TCP** (Huawei SDongle ปิดเป็นค่าเริ่มต้น) ต้องเข้าแอปผู้ผลิตเปิด 1 ครั้ง
 2. **อ่าน 1 รอบ** แล้วเทียบกับหน้าจอ/แอปของผู้ผลิต ณ เวลาเดียวกัน
    ```bash
    python -m solar_relay --config config.yaml --dry-run --once

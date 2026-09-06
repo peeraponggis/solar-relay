@@ -75,6 +75,13 @@ class Relay:
     def stop(self) -> None:
         self._stop.set()
 
+    def _tag_site(self, r: Reading) -> None:
+        site = self.cfg.site_of(r.device_id) or self.cfg.site_of(r.device_id.split(":", 1)[0])
+        if site:
+            r.extra.setdefault("site_id", site.id)
+            r.extra.setdefault("site_name", site.name)
+            r.extra.setdefault("customer", site.customer)
+
     async def _poll_loop(self, adapter: BaseAdapter, once: bool) -> None:
         backoff = adapter.interval_s
         while not self._stop.is_set():
@@ -83,6 +90,7 @@ class Relay:
                 for r in readings:
                     r.derive_missing()
                     enrich_reading(r)
+                    self._tag_site(r)
                     await self.queue.put(r)
                 backoff = adapter.interval_s
                 adapter.consecutive_errors = 0
@@ -90,7 +98,9 @@ class Relay:
                 adapter.consecutive_errors += 1
                 log.warning("[%s] read failed (%d): %s", adapter.device_id, adapter.consecutive_errors, exc)
                 if adapter.consecutive_errors >= 3:
-                    await self.queue.put(adapter.offline_reading(str(exc)))
+                    off = adapter.offline_reading(str(exc))
+                    self._tag_site(off)
+                    await self.queue.put(off)
                 backoff = min(adapter.interval_s * 2 ** min(adapter.consecutive_errors, 4), 900)
             if once:
                 return
@@ -100,6 +110,7 @@ class Relay:
         async for reading in adapter.stream():
             reading.derive_missing()
             enrich_reading(reading)
+            self._tag_site(reading)
             await self.queue.put(reading)
             if self._stop.is_set():
                 break
